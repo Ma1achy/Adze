@@ -14,6 +14,7 @@ from torch.utils.data import Dataset
 
 from adze.data.corrupt import CorruptedPair
 from adze.data.tokeniser import MAX_STEP_LEN, PAD_ID, CharTokeniser
+from adze.pad import real_positions
 
 
 class TraceDataset(Dataset):
@@ -165,7 +166,7 @@ class LatentCache:
         # deviation amplifies that noise to full amplitude and hands the denoiser
         # pure noise dimensions to model as if they were data. One scalar leaves
         # near-dead dimensions small, which is what you want.
-        real = block_masks.repeat_interleave(dataset.latents_per_block, dim=1)
+        real = real_positions(block_masks, dataset.latents_per_block).squeeze(-1)
         scale = latents[real].std().item()
 
         self.path.parent.mkdir(parents=True, exist_ok=True)

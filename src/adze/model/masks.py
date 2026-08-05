@@ -70,3 +70,25 @@ def visible_prefix_mask(block_ids: torch.Tensor, up_to_block: int) -> torch.Tens
 
     visible = block_ids <= up_to_block
     return visible.unsqueeze(0) & visible.unsqueeze(1)
+
+
+def regime_a_mask(block_ids: torch.Tensor, block: int) -> torch.Tensor:
+    """The mask regime A trains under, and therefore the one the sampler must use.
+
+    Causal across blocks AND every block after `block` absent entirely. Both halves
+    are needed: the build plan says "causal mask", the mask tests say later blocks
+    are absent, and regime A is both at once.
+
+    This exists so training and sampling cannot drift apart. A sampler that built
+    its own mask would be measuring something the model was never taught, and the
+    discrepancy would present as "the denoiser doesn't work" rather than as a mask
+    bug. One definition, called from `regime_a_batch` and from `draft`.
+
+    Args:
+        block_ids: [N]
+        block: the block being denoised.
+
+    Returns:
+        [N, N] bool tensor.
+    """
+    return build_mask(block_ids, MaskMode.CAUSAL) & visible_prefix_mask(block_ids, block)

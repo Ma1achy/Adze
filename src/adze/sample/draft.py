@@ -11,12 +11,14 @@ not a bug, and it lifts at M5 when question conditioning arrives.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import torch
 
 from adze.invariants import MaskMode
 from adze.model.denoiser import Denoiser
-from adze.model.flow import euler_step
-from adze.model.masks import build_mask, visible_prefix_mask
+from adze.model.flow import euler_step, schedule
+from adze.model.masks import regime_a_mask
 from adze.sample.trajectory import TrajectoryRecorder
 
 
@@ -31,6 +33,8 @@ def draft(
     device: str = "mps",
     batch: int = 1,
     recorder: TrajectoryRecorder | None = None,
+    shift: float = 1.0,
+    mask_for_block: Callable[[torch.Tensor, int], torch.Tensor] = regime_a_mask,
 ) -> torch.Tensor:
     """Returns:
         latents: [batch, N, D] the drafted reasoning chain.
@@ -42,11 +46,16 @@ def draft(
         nfe: Euler steps per block. Total forward passes is nfe * B — each block is
             integrated separately because a block must be complete before it can
             serve as clean context for the next.
+        shift: schedule shape. 1.0 spaces the knots uniformly in t; >1 concentrates
+            them the way shifted logit-normal training concentrates its draws.
+            Training uses shift 1.5, so a sampler at 1.0 spends equal budget in
+            regions where the model is unequally reliable.
+        mask_for_block: (block_ids, b) -> [N, N]. Defaults to `regime_a_mask`, the
+            same function `regime_a_batch` trains under. Stated explicitly rather
+            than implied by a mode flag: a sampler using a different mask from
+            training measures something the model was never taught, and this makes
+            the choice visible at the call site instead of buried in a branch.
         recorder: optional TrajectoryRecorder, fed at every step of every block.
-
-    The mask matches regime A training exactly: causal across blocks, and blocks
-    after the one being denoised absent entirely. A sampler that used a different
-    mask from training would be measuring something the model was never taught.
     """
     if context is not None:
         raise NotImplementedError("question conditioning is M5, not M4")
@@ -63,17 +72,21 @@ def draft(
     # before it are overwritten with their generated values as we go.
     latents = torch.randn(batch, n_positions, latent_dim, device=dev)
 
-    dt = 1.0 / nfe
+    # Knots, not a step size. Under a shift the spacing is non-uniform, so dt is
+    # read off the interval each step actually spans. Hardcoding 1/nfe here would
+    # silently integrate the wrong distance on every step of a shifted schedule.
+    knots = schedule(nfe, shift, device=dev)
     global_step = 0
 
     for b in range(blocks):
-        mask = build_mask(block_ids, MaskMode.CAUSAL) & visible_prefix_mask(block_ids, b)
+        mask = mask_for_block(block_ids, b)
         is_active = (block_ids == b).view(1, n_positions, 1)
 
         for i in range(nfe):
             # t runs 1 -> 0 for the active block. Earlier blocks are already clean
             # (t = 0); later blocks are absent, and their t is never read.
-            t_active = 1.0 - i * dt
+            t_active = float(knots[i])
+            dt = float(knots[i] - knots[i + 1])
             t = torch.zeros(batch, blocks, device=dev)
             t[:, b] = t_active
             t[:, b + 1 :] = 1.0
@@ -88,7 +101,7 @@ def draft(
             global_step += 1
             if recorder is not None:
                 recorder.record(
-                    global_step, max(t_active - dt, 0.0), latents[0], active_block=b
+                    global_step, float(knots[i + 1]), latents[0], active_block=b
                 )
 
     return latents

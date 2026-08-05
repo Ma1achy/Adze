@@ -30,7 +30,8 @@ from adze.eval.checks import overfit_one_batch
 from adze.invariants import MaskMode
 from adze.model.denoiser import Denoiser
 from adze.model.flow import interpolate, sample_timesteps, velocity_target
-from adze.model.masks import build_mask, visible_prefix_mask
+from adze.model.masks import regime_a_mask
+from adze.pad import masked_mean, real_positions
 
 CHECKPOINT_DIR = Path("checkpoints")
 CACHE_DIR = Path("data/cache")
@@ -100,9 +101,9 @@ def regime_a_batch(
     z_t = interpolate(z0, eps, t)
     target = velocity_target(z0, eps)
 
-    # Causal across blocks AND later blocks absent entirely. The build plan says
-    # "causal mask", the mask tests say later blocks are absent; regime A is both.
-    mask = build_mask(block_ids, MaskMode.CAUSAL) & visible_prefix_mask(block_ids, b)
+    # The same function `draft` samples under. Shared by construction so the two
+    # cannot drift apart — see adze.model.masks.regime_a_mask.
+    mask = regime_a_mask(block_ids, b)
 
     # Score block b, but only for examples where block b holds a real step. A
     # padded block carries the same constant vector every time, so it is trivially
@@ -110,7 +111,7 @@ def regime_a_batch(
     # having learned anything. Pad blocks are masked out, not merely represented.
     loss_mask = (block_ids == b).view(1, n_positions, 1).expand(batch, -1, 1).clone()
     if block_mask is not None:
-        loss_mask = loss_mask & block_mask[:, b].view(batch, 1, 1)
+        loss_mask = loss_mask & real_positions(block_mask, n_positions // blocks)
 
     return {
         "z_t": z_t,
@@ -135,11 +136,12 @@ def regime_a_loss(model: Denoiser, batch: dict[str, torch.Tensor], block_ids: to
         MaskMode.CAUSAL,
         mask=batch["mask"],
     )
-    err = (pred - batch["target"]) ** 2
-    denom = batch["loss_mask"].sum() * err.shape[-1]
-    if denom == 0:
+    if batch["loss_mask"].sum() == 0:
+        # Every example's block b is padding. masked_mean raises on this by design;
+        # callers skip such steps, and this keeps the graph intact for the ones that
+        # do not check first.
         return (pred * 0).sum()
-    return (err * batch["loss_mask"]).sum() / denom
+    return masked_mean((pred - batch["target"]) ** 2, batch["loss_mask"])
 
 
 def train_denoiser(
@@ -184,7 +186,7 @@ def train_denoiser(
     # Report on real positions only. Averaging in pad blocks understates both
     # figures — they hold one constant vector — and makes the scaling look broken
     # when it is exact.
-    real = block_mask.repeat_interleave(k, dim=1)
+    real = real_positions(block_mask, k).squeeze(-1)
     real_latents = latents[real]
     root_d = latents.shape[-1] ** 0.5
     print(f"latents       {tuple(latents.shape)}  [n, N=B*K, D]  scale {cache.scale:.4f}")

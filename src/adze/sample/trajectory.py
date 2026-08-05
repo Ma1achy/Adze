@@ -45,6 +45,37 @@ def classify(text: str) -> str:
     return "true" if result == {"+": lhs + rhs, "-": lhs - rhs, "*": lhs * rhs}[op] else "false"
 
 
+def rates(texts: list[str]) -> tuple[float, float]:
+    """(well-formed share, arithmetically true share) over raw decoded strings."""
+    kinds = [classify(t) for t in texts]
+    formed = sum(1 for k in kinds if k != "malformed") / len(kinds)
+    true = sum(1 for k in kinds if k == "true") / len(kinds)
+    return formed, true
+
+
+@torch.no_grad()
+def noise_floor(
+    decoder: torch.nn.Module,
+    tokeniser: object,
+    shape: tuple[int, ...],
+    n: int,
+    device: torch.device,
+) -> tuple[float, float, list[str]]:
+    """The bar any sample must beat: random Gaussian latents through this decoder.
+
+    Lives here rather than in a script because more than one caller needs it and
+    two copies would drift. The floor is a property of the decoder — it has ranged
+    from 82.6% (D=16) to 87.0% (D=64) — so it is measured, never assumed.
+
+    Returns:
+        (well-formed share, true share, a few example decodes)
+    """
+    z = torch.randn(n, *shape, device=device)
+    texts = [tokeniser.decode(row) for row in decoder(z).argmax(dim=-1)]
+    formed, true = rates(texts)
+    return formed, true, texts[:3]
+
+
 class TrajectoryRecorder:
     """Capture latents at every denoising step, decode on demand.
 
@@ -113,6 +144,40 @@ class TrajectoryRecorder:
         out = [[False] * len(texts[0])] if texts else []
         for prev, cur in zip(texts, texts[1:]):
             out.append([a == b for a, b in zip(prev, cur)])
+        return out
+
+    def shell(self) -> list[tuple[int, int | None, float, float, float]]:
+        """Per recorded step: how far the active block sits off the noise shell.
+
+        Rectified flow's forward path is z_t = (1-t)z0 + t*eps. With the latent
+        scaling constant applied, z0 and eps both have unit per-dimension variance
+        and are close to independent, so a point ON the path satisfies
+
+            E[z_t^2] = (1-t)^2 + t^2                per dimension
+
+        The sampler's job is to travel back along that path. If Euler truncation
+        error is walking it off-manifold, the departure from this curve grows as
+        t -> 0 and shrinks as nfe rises — which makes this the most direct readout
+        of integration error available, and one that is geometric rather than
+        density-dependent.
+
+        Returns:
+            (step, active_block, t, observed RMS, expected RMS) per recorded step.
+            Only the active block's positions are measured; finished blocks are
+            frozen and unfinished ones are still pure noise.
+        """
+        out = []
+        blocks = None
+        for step, t, active, z in self._steps:
+            if active is None:
+                continue
+            if blocks is None:
+                blocks = z.shape[0] // self.latents_per_block
+            lo = active * self.latents_per_block
+            hi = lo + self.latents_per_block
+            observed = z[lo:hi].pow(2).mean().sqrt().item()
+            expected = ((1 - t) ** 2 + t**2) ** 0.5
+            out.append((step, active, t, observed, expected))
         return out
 
     def print(self, every: int = 1) -> None:

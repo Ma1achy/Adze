@@ -144,7 +144,19 @@ Then: training loss decreasing on the full set.
 - Euler ODE sampler, `t: 1 → 0`, block by block
 - `trajectory.py`: decode and print every denoising step
 
-**Acceptance:** generated traces are syntactically well-formed arithmetic steps. Correctness not required yet. The trajectory printer is the main debugging instrument for everything after this — build it properly, not as a `print` in a loop.
+**Acceptance:** arithmetic truth **above the measured noise floor**. The trajectory printer is the main debugging instrument for everything after this — build it properly, not as a `print` in a loop.
+
+**The original criterion — "syntactically well-formed arithmetic steps" — has been retired, because it cannot fail.** The decoder emits `N op N = N` from almost any latent: random Gaussian latents parse 82.6% of the time at D=16 and 87.0% at D=64. Worse, a denoiser doing *literally nothing* scores 83.6% — `out_proj` is zero-initialised, so an untrained model predicts zero velocity, the ODE never moves, and the sampler decodes its own initial noise. The trained sampler scored 85.6%. A criterion that separates a working model from an untrained one by 2pp is not a criterion.
+
+Truth has a floor too (6.1–6.7%, measured), so it is read as a margin over that floor and never against zero. Measure both floors for the decoder in hand — they move with D.
+
+**Per-block quality, on record now rather than discovered at M7.** Blocks 5–6 are real for only a small fraction of traces (traces run 3–7 steps against B=7) and will stay permanently weaker. That is the known and accepted cost of B=7 for full coverage. Measured at M4, arithmetic truth by block:
+
+| b0 | b1 | b2 | b3 | b4 | b5 | b6 |
+|----|----|----|----|----|----|----|
+| 12.0% | 13.0% | 6.7% | 7.7% | 3.7% | 1.3% | 0.7% |
+
+Note that **block 0 is the strongest, not the weakest** — the opposite of what the M3 gate suggests. Block 0 floors highest in *training* loss because it is unconditional, but at sampling time it is the only block whose conditioning is in-distribution, since there is no generated prefix for it to be wrong about.
 
 ---
 

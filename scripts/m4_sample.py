@@ -28,20 +28,9 @@ from adze.data.tokeniser import CharTokeniser
 from adze.model.denoiser import Denoiser
 from adze.model.vae import build_vae
 from adze.sample.draft import draft
-from adze.sample.trajectory import TrajectoryRecorder, classify
+from adze.sample.trajectory import TrajectoryRecorder, classify, noise_floor
 
 CACHE_DIR = Path("data/cache")
-
-
-@torch.no_grad()
-def noise_floor(decoder: torch.nn.Module, tokeniser: CharTokeniser, shape, n: int, device):
-    """Share of random Gaussian latents that decode to well-formed arithmetic."""
-    z = torch.randn(n, *shape, device=device)
-    texts = [tokeniser.decode(row) for row in decoder(z).argmax(dim=-1)]
-    kinds = [classify(t) for t in texts]
-    formed = sum(1 for k in kinds if k != "malformed") / len(kinds)
-    true = sum(1 for k in kinds if k == "true") / len(kinds)
-    return formed, true, texts[:3]
 
 
 def main() -> None:

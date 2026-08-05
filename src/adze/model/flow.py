@@ -10,6 +10,44 @@ from __future__ import annotations
 import torch
 
 
+def apply_shift(t: torch.Tensor, shift: float) -> torch.Tensor:
+    """SD3-style shift toward higher noise: t' = shift*t / (1 + (shift-1)*t).
+
+    Factored out because training and inference must apply the *same* transform.
+    Training draws t from a logit-normal and shifts it; the sampler lays out its
+    Euler knots and shifts those. If only one side shifts, the sampler spends its
+    integration budget in regions where the model is unequally reliable — which is
+    a train/inference mismatch that looks exactly like an undertrained model.
+
+    Fixed points at 0 and 1, monotone in between, so it reshapes the schedule
+    without changing its endpoints.
+    """
+    if shift <= 0:
+        raise ValueError(f"shift must be positive, got {shift}")
+    return shift * t / (1 + (shift - 1) * t)
+
+
+def schedule(nfe: int, shift: float = 1.0, device: torch.device | None = None) -> torch.Tensor:
+    """Euler knots for the reverse ODE, t running 1 -> 0.
+
+    Args:
+        nfe: number of Euler steps. Returns nfe + 1 knots.
+        shift: 1.0 gives uniform spacing; >1 concentrates knots where the shifted
+            training distribution puts its mass.
+
+    Returns:
+        [nfe + 1] tensor, strictly decreasing, starting at 1.0 and ending at 0.0.
+
+    The caller must take its step sizes by DIFFERENCING these knots, not as 1/nfe.
+    Under a shift the spacing is non-uniform, and an Euler step whose dt does not
+    match the interval it spans is not a reweighted integration — it is a wrong one.
+    """
+    if nfe < 1:
+        raise ValueError(f"nfe must be >= 1, got {nfe}")
+    u = torch.linspace(1.0, 0.0, nfe + 1, device=device)
+    return apply_shift(u, shift)
+
+
 def sample_timesteps(
     shape: tuple[int, ...],
     shift: float = 1.5,
@@ -35,12 +73,8 @@ def sample_timesteps(
     Returns:
         Tensor of `shape` with values in (0, 1).
     """
-    if shift <= 0:
-        raise ValueError(f"shift must be positive, got {shift}")
-
     normal = torch.randn(shape, device=device, generator=generator)
-    t = torch.sigmoid(normal)
-    return shift * t / (1 + (shift - 1) * t)
+    return apply_shift(torch.sigmoid(normal), shift)
 
 
 def broadcast_t(t: torch.Tensor, block_ids: torch.Tensor) -> torch.Tensor:
