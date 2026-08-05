@@ -152,6 +152,8 @@ def train_denoiser(
     latent_dim: int | None = None,
     seed: int = 0,
     t_shift: float | None = 1.5,
+    batch_size: int | None = None,
+    lr: float | None = None,
 ) -> dict[str, float]:
     """Args:
         config_path: yaml config.
@@ -162,6 +164,11 @@ def train_denoiser(
             final sharpening happens. None samples t uniformly. The gate is run at
             the same shift so the trade between gate loss and sample quality is
             visible rather than hidden.
+        batch_size, lr: override the config's training budget WITHOUT editing the
+            config. debug.yaml is sized for fast iteration (batch 8, 500 steps),
+            which is a different quantity from the compute a result needs — and
+            resizing the YAML to make a number move is what CLAUDE.md forbids.
+            Overriding here keeps the config honest and the run explicit.
     """
     if mixed:
         raise NotImplementedError("regime B and the 90/10 mix are M6, not M3")
@@ -246,6 +253,8 @@ def train_denoiser(
 
     # ---- Full regime A training ---------------------------------------------
     n_steps = steps if steps is not None else config.train.steps
+    n_batch = batch_size if batch_size is not None else config.train.batch_size
+    n_lr = lr if lr is not None else config.train.lr
     model = Denoiser(
         latent_dim=latents.shape[-1],
         d_model=config.model.denoiser.d_model,
@@ -254,15 +263,15 @@ def train_denoiser(
         latents_per_block=k,
         blocks=blocks,
     ).to(device)
-    opt = torch.optim.AdamW(model.parameters(), lr=config.train.lr)
+    opt = torch.optim.AdamW(model.parameters(), lr=n_lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=n_steps)
 
     print()
-    print(f"regime A training — {n_steps} steps, batch {config.train.batch_size}")
+    print(f"regime A training — {n_steps} steps, batch {n_batch}, lr {n_lr}")
     t0 = time.perf_counter()
     model.train()
     for step in range(1, n_steps + 1):
-        idx = torch.randint(0, latents.shape[0], (config.train.batch_size,), device=device)
+        idx = torch.randint(0, latents.shape[0], (n_batch,), device=device)
         batch = regime_a_batch(
             latents[idx], block_ids, blocks, block_mask=block_mask[idx],
             t_shift=t_shift,
@@ -316,9 +325,12 @@ def main() -> None:
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--t-shift", type=float, default=1.5,
                    help="logit-normal shift; <1 concentrates on small t")
+    p.add_argument("--batch", type=int, default=None)
+    p.add_argument("--lr", type=float, default=None)
     args = p.parse_args()
     train_denoiser(args.config, steps=args.steps, gate_steps=args.gate_steps,
-                   latent_dim=args.latent_dim, seed=args.seed, t_shift=args.t_shift)
+                   latent_dim=args.latent_dim, seed=args.seed, t_shift=args.t_shift,
+                   batch_size=args.batch, lr=args.lr)
 
 
 if __name__ == "__main__":
