@@ -151,10 +151,17 @@ def train_denoiser(
     gate_steps: int = 6000,
     latent_dim: int | None = None,
     seed: int = 0,
+    t_shift: float | None = 1.5,
 ) -> dict[str, float]:
     """Args:
         config_path: yaml config.
         mixed: False for M3 (regime A only), True for M6 (90/10 mix).
+        t_shift: shift for logit-normal timestep sampling. 1.5 concentrates draws
+            at high t (SD3's setting, and M3's); 1.0 is plain logit-normal; values
+            BELOW 1 invert the transform and concentrate on small t, which is where
+            final sharpening happens. None samples t uniformly. The gate is run at
+            the same shift so the trade between gate loss and sample quality is
+            visible rather than hidden.
     """
     if mixed:
         raise NotImplementedError("regime B and the 90/10 mix are M6, not M3")
@@ -217,6 +224,7 @@ def train_denoiser(
         },
         steps=gate_steps,
         lr=1e-3,
+        t_shift=t_shift,
     )
     print(f"  initial loss  {gate['initial_loss']:.6f}")
     print(f"  final loss    {gate['final_loss']:.6f}")
@@ -256,7 +264,8 @@ def train_denoiser(
     for step in range(1, n_steps + 1):
         idx = torch.randint(0, latents.shape[0], (config.train.batch_size,), device=device)
         batch = regime_a_batch(
-            latents[idx], block_ids, blocks, block_mask=block_mask[idx]
+            latents[idx], block_ids, blocks, block_mask=block_mask[idx],
+            t_shift=t_shift,
         )
         loss = regime_a_loss(model, batch, block_ids)
 
@@ -272,7 +281,10 @@ def train_denoiser(
     print(f"\ntrained in {time.perf_counter() - t0:.1f}s")
 
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
-    ckpt = CHECKPOINT_DIR / f"denoiser_{config.name}_d{latents.shape[-1]}.pt"
+    # The shift goes in the filename: a sweep over shifts would otherwise
+    # overwrite its own earlier runs, and the comparison needs all of them.
+    suffix = "" if t_shift == 1.5 else f"_shift{t_shift}"
+    ckpt = CHECKPOINT_DIR / f"denoiser_{config.name}_d{latents.shape[-1]}{suffix}.pt"
     torch.save(
         {
             "model": model.state_dict(),
@@ -286,6 +298,7 @@ def train_denoiser(
                 "blocks": blocks,
             },
             "latent_scale": cache.scale,
+            "t_shift": t_shift,
         },
         ckpt,
     )
@@ -301,9 +314,11 @@ def main() -> None:
     p.add_argument("--gate-steps", type=int, default=6000)
     p.add_argument("--latent-dim", type=int, default=None)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--t-shift", type=float, default=1.5,
+                   help="logit-normal shift; <1 concentrates on small t")
     args = p.parse_args()
     train_denoiser(args.config, steps=args.steps, gate_steps=args.gate_steps,
-                   latent_dim=args.latent_dim, seed=args.seed)
+                   latent_dim=args.latent_dim, seed=args.seed, t_shift=args.t_shift)
 
 
 if __name__ == "__main__":

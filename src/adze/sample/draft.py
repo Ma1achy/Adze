@@ -35,6 +35,7 @@ def draft(
     recorder: TrajectoryRecorder | None = None,
     shift: float = 1.0,
     mask_for_block: Callable[[torch.Tensor, int], torch.Tensor] = regime_a_mask,
+    on_step: Callable[[int, float, int, torch.Tensor], None] | None = None,
 ) -> torch.Tensor:
     """Returns:
         latents: [batch, N, D] the drafted reasoning chain.
@@ -56,6 +57,11 @@ def draft(
             training measures something the model was never taught, and this makes
             the choice visible at the call site instead of buried in a branch.
         recorder: optional TrajectoryRecorder, fed at every step of every block.
+        on_step: optional callback (global_step, t, active_block, latents) receiving
+            the FULL batch at every step. `recorder` only ever sees sample 0, so a
+            variance across the batch cannot be recovered from it; rather than
+            distort the recorder into carrying batches it never decodes, statistics
+            that need the batch take this hook.
     """
     if context is not None:
         raise NotImplementedError("question conditioning is M5, not M4")
@@ -99,6 +105,8 @@ def draft(
             latents = torch.where(is_active, stepped, latents)
 
             global_step += 1
+            if on_step is not None:
+                on_step(global_step, float(knots[i + 1]), b, latents)
             if recorder is not None:
                 recorder.record(
                     global_step, float(knots[i + 1]), latents[0], active_block=b
