@@ -227,6 +227,52 @@ def main() -> None:
     print(f"  {'0.5 nrm':>6} {rel:>12.3f} {cos:>9.3f} {chance_norm(cos):>12.3f} "
           f"{nr:>10.3f} {frac:>13.1%}   <- midpoint rescaled to endpoint radius")
 
+    # Nearest-neighbour rank. The direct test, and it needs no null at all.
+    #
+    # Round-trip cosine asks whether a point lies in the ENCODER'S STABLE SET. It
+    # does not ask whether the point means something between the endpoints, and the
+    # two come apart precisely when the encoder is degenerate: if the space cannot
+    # represent steps distinctly, latents crowd together and midpoints round-trip
+    # well because everything is near everything. "Compression buys continuity" and
+    # "the encoder collapsed toward a point" predict the SAME cosine. This tells
+    # them apart — in a smooth space the endpoints are the midpoint's nearest
+    # neighbours; in a collapsed one, arbitrary unrelated steps rank just as close.
+    print()
+    print("=" * 74)
+    print("Nearest-neighbour rank of the endpoints, among real latents")
+    print("=" * 74)
+    pool = mu.flatten(1)                       # every encoded step, both halves
+    mid = (0.5 * (left + right)).flatten(1)
+    dist = torch.cdist(mid, pool)              # [pairs, pool]
+    order = dist.argsort(dim=1)
+    # left pair i is pool row i; right pair i is pool row pairs + i.
+    rank_of = torch.empty_like(order)
+    rank_of.scatter_(
+        1, order, torch.arange(pool.shape[0], device=order.device).expand_as(order)
+    )
+    idx = torch.arange(args.pairs, device=order.device)
+    rank_l = rank_of[idx, idx].float()
+    rank_r = rank_of[idx, idx + args.pairs].float()
+    both_top10 = ((rank_l < 10) & (rank_r < 10)).float().mean().item()
+    print(f"  pool size                    {pool.shape[0]}")
+    print(f"  median rank, left endpoint   {rank_l.median().item():.0f}")
+    print(f"  median rank, right endpoint  {rank_r.median().item():.0f}")
+    print(f"  both endpoints in top 10     {both_top10:.1%}")
+
+    # Concentration. If every real latent is roughly equidistant from every other,
+    # the space has collapsed and rank is meaningless because there is nothing to
+    # rank. Ratio -> 1 is total collapse; a healthy space sits well below.
+    pool_d = torch.cdist(pool[:1000], pool[:1000])
+    pool_d.fill_diagonal_(float("inf"))
+    nn_d = pool_d.min(dim=1).values.mean().item()
+    mean_d = pool_d[pool_d.isfinite()].mean().item()
+    print(f"  nearest-neighbour / mean distance among real latents  "
+          f"{nn_d / mean_d:.3f}   (1.0 = fully collapsed)")
+    print()
+    print("  A LOW median rank means the midpoint really does sit between its two")
+    print("  endpoints. High ranks with a good round-trip cosine is the collapse")
+    print("  signature: the point is stable under the encoder but means nothing.")
+
     print()
     print("  COMPARE THE CHANCE-NORM COLUMN ACROSS RUNS, never raw cosine — the")
     print("  null moves with D and will manufacture an improvement that is not there.")

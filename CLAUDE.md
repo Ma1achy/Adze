@@ -95,6 +95,8 @@ Keep `configs/debug.yaml` working at every milestone — 2 layers, 128 wide, 8 N
 
 **Reconstruction fidelity and representation quality are close to unrelated.** A VAE can reconstruct at >97% while its latent space is spiky and awkward, and the symptom arrives at M3 disguised as "the denoiser won't train". `scripts/m2_interpolate.py` decodes latent midpoints as an early warning — it is a diagnostic, not a gate.
 
+**Read its nearest-neighbour rank, not its round-trip cosine.** Cosine asks whether a point lies in the encoder's *stable set*; it does not ask whether the point means anything. The two come apart exactly when the encoder is degenerate — a collapsed space round-trips everything well because everything is near everything. Measured: D=8 has the *best* chance-normalised cosine (0.769 vs 0.673 at D=16) and the *worst* NN rank by a factor of four (median 29 vs 6, both-endpoints-in-top-10 25% vs 56%), matching its 29% unseen reconstruction. Cosine said D=8 was the smoothest space; it was the most collapsed one. Never compare cosine across latent dimensionality.
+
 ## Style
 
 - Type hints on public functions
