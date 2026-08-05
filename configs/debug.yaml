@@ -1,0 +1,35 @@
+# Fast-iteration config. Must overfit 8 examples to near-zero loss in under a minute.
+# Keep this working at every milestone.
+name: debug
+
+data:
+  n_train: 100
+  n_val: 20
+  max_depth: 2
+  operand_max: 20
+  blocks_per_sequence: 4      # B
+  seed: 0
+
+model:
+  latents_per_block: 4        # K
+  latent_dim: 64              # D
+  vae:
+    n_layers: 2
+    d_model: 128
+    n_heads: 4
+  denoiser:
+    n_layers: 2
+    d_model: 128
+    n_heads: 4
+
+train:
+  batch_size: 8
+  lr: 3.0e-4
+  steps: 500
+  regime_b_prob: 0.1
+  kl_beta: 1.0e-3
+
+sample:
+  nfe: 8                      # denoising steps
+
+device: mps
