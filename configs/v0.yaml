@@ -4,9 +4,9 @@ name: v0
 data:
   n_train: 200000
   n_val: 2000
-  max_depth: 4
+  max_depth: 3
   operand_max: 100
-  blocks_per_sequence: 8      # B — revisit against M1 length statistics
+  blocks_per_sequence: 7      # B — 100% coverage of depth-3 traces (M1 stats)
   seed: 0
 
 model:

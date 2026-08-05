@@ -18,6 +18,11 @@ swapped after its result is computed, no operands are reordered, no result or
 provenance index is patched. `is_valid()` on a freshly generated trace is therefore
 a genuine check on the builder rather than a formality it was massaged into passing.
 
+Magnitude is held by choosing the operator from those that keep the result in range
+given the children's actual values, which construction order already makes
+available. No operator or operand pattern is structurally excluded, so `op` carries
+no information about whether a step consumes an earlier result.
+
 See tests/test_m1_generate.py for the acceptance criteria.
 """
 
@@ -33,10 +38,11 @@ OPS: dict[str, Callable[[int, int], int]] = {
     "*": lambda a, b: a * b,
 }
 
-# Multiplication operands are drawn from a deliberately small range so that step
-# lines stay short and the character statistics that decide K mean something.
-MUL_OPERAND_MIN = 2
-MUL_OPERAND_MAX = 12
+# Intermediate values are held to the low thousands so that step lines stay short
+# and the character statistics that decide K mean something. The cap is enforced
+# when the operator is chosen, against the children's actual values — never by
+# capping or rewriting a result afterwards.
+MAGNITUDE_CAP = 1_000
 
 # Probability that a child position becomes a subtree rather than a literal.
 BRANCH_P = 0.6
@@ -113,35 +119,47 @@ class _Node:
     right: "_Node | int"
 
 
-def _operand_range(op: str, operand_max: int) -> tuple[int, int]:
-    """Leaf operand range for a given operator. Chosen after the op, never revised."""
-    if op == "*":
-        return MUL_OPERAND_MIN, MUL_OPERAND_MAX
-    return 1, operand_max
+def _build(rng: random.Random, depth: int, operand_max: int) -> tuple[_Node, int]:
+    """Build one expression-tree node bottom-up, returning it and its value.
 
+    Construction is post-order, so the children's actual values are known by the
+    time the operator is chosen. The operator is drawn from whichever ops keep the
+    result within MAGNITUDE_CAP *given those values* — so `*` on a previous result
+    is allowed whenever the numbers happen to be small, and is simply not offered
+    when they are not.
 
-def _build(rng: random.Random, depth: int, operand_max: int) -> _Node:
-    """Build one expression-tree node, top-down, deciding each thing exactly once.
+    Decided once, never revised: no operator is swapped after its result is seen,
+    no result is clamped, no fallback fires. The cap shapes the choice rather than
+    correcting its outcome.
 
-    Order is shape, then operator, then operands — so the operator constrains the
-    operand range rather than the other way round, and nothing needs rewriting
-    after the fact.
-
-    Multiplication is only chosen where both operands are literals. Nested
-    multiplication compounds: a depth-3 tree of products reaches ~10^8 and would
-    dominate the length statistics. Restricting `*` to the frontier holds values
-    in the hundreds at construction time, without any post-hoc cap or fallback.
+    Every child value is bounded by max(operand_max, MAGNITUDE_CAP), so whichever
+    of `+`/`-` yields ||lhs| - |rhs|| is always within the cap and the candidate
+    set is never empty. The guard below is a bug check, not a fallback path.
     """
     branch_left = depth > 1 and rng.random() < BRANCH_P
     branch_right = depth > 1 and rng.random() < BRANCH_P
 
-    allowed = ["+", "-", "*"] if not (branch_left or branch_right) else ["+", "-"]
-    op = rng.choice(allowed)
-    lo, hi = _operand_range(op, operand_max)
+    if branch_left:
+        left, lhs = _build(rng, depth - 1, operand_max)
+    else:
+        lhs = rng.randint(1, operand_max)
+        left = lhs
 
-    left = _build(rng, depth - 1, operand_max) if branch_left else rng.randint(lo, hi)
-    right = _build(rng, depth - 1, operand_max) if branch_right else rng.randint(lo, hi)
-    return _Node(op, left, right)
+    if branch_right:
+        right, rhs = _build(rng, depth - 1, operand_max)
+    else:
+        rhs = rng.randint(1, operand_max)
+        right = rhs
+
+    allowed = [op for op, f in OPS.items() if abs(f(lhs, rhs)) <= MAGNITUDE_CAP]
+    if not allowed:
+        raise RuntimeError(
+            f"no operator keeps {lhs} ? {rhs} within {MAGNITUDE_CAP}; "
+            f"operand_max={operand_max} is too large for the cap"
+        )
+
+    op = rng.choice(allowed)
+    return _Node(op, left, right), OPS[op](lhs, rhs)
 
 
 def _emit(node: "_Node | int", steps: list[Step]) -> tuple[int, int | None]:
@@ -198,7 +216,7 @@ def generate_trace(
     rng = random.Random(rng_seed)
 
     for _ in range(MAX_BUILD_ATTEMPTS):
-        root = _build(rng, max_depth, operand_max)
+        root, _value = _build(rng, max_depth, operand_max)
         steps: list[Step] = []
         answer, _ = _emit(root, steps)
         if len(steps) >= floor:

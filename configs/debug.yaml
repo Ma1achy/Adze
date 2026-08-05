@@ -5,9 +5,9 @@ name: debug
 data:
   n_train: 100
   n_val: 20
-  max_depth: 2
+  max_depth: 3
   operand_max: 20
-  blocks_per_sequence: 4      # B
+  blocks_per_sequence: 6      # B
   seed: 0
 
 model:
