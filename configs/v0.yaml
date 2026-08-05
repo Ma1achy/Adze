@@ -11,7 +11,7 @@ data:
 
 model:
   latents_per_block: 4        # K
-  latent_dim: 64              # D
+  latent_dim: 16              # D — best unseen-step reconstruction (M2 sweep)
   vae:
     n_layers: 6
     d_model: 512

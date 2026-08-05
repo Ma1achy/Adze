@@ -91,10 +91,26 @@ class TraceDataset(Dataset):
 
 
 class LatentCache:
-    """Encode a dataset once with a frozen VAE, store latents to disk, reload fast."""
+    """Encode a dataset once with a frozen VAE, store latents to disk, reload fast.
+
+    The cache also carries a **scaling constant**, and applies it on load.
+
+    Rectified flow interpolates in a straight line between the latents and
+    unit-variance Gaussian noise. If the latents' radius does not match the noise's,
+    every intermediate `t` lands in the under-normed interior rather than on the
+    shell where real latents live — the same chord-cutting the M2 smoothness probe
+    measured (norm ratio 1.21 at midpoints), except on the training path rather than
+    in a diagnostic. Stable Diffusion's VAE carries a scaling constant for exactly
+    this reason.
+
+    The constant is the mean per-dimension standard deviation over the training
+    latents. `load()` returns scaled latents; `unscale()` inverts it, and must be
+    applied before anything is handed to the decoder.
+    """
 
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
+        self._scale: float | None = None
 
     @torch.no_grad()
     def build(self, dataset: TraceDataset, encoder: torch.nn.Module) -> None:
@@ -116,6 +132,7 @@ class LatentCache:
         latents = torch.empty(
             len(dataset), dataset.n_positions, encoder.pad_latent.shape[-1]
         )
+        block_masks = torch.zeros(len(dataset), dataset.blocks, dtype=torch.bool)
 
         for i in range(len(dataset)):
             item = dataset[i]
@@ -126,12 +143,62 @@ class LatentCache:
             mu[~block_mask] = encoder.pad_latent.to(mu.dtype)
 
             latents[i] = mu.reshape(dataset.n_positions, -1).cpu()
+            block_masks[i] = item["block_mask"]
+
+        # Pooled standard deviation over real (non-pad) positions. Pad blocks all
+        # carry the same constant vector, so including them would drag the estimate
+        # toward zero by however much of the batch is padding.
+        #
+        # Pooled, not the mean of the per-dimension standard deviations. The two
+        # differ whenever dimensions are unequally used, and they were: measured
+        # across D=64/32/16 the mean-of-stds put the scaled radius at 1.36x, 1.03x
+        # and 0.73x of sqrt(D) respectively, because mean(std) understates RMS by
+        # more the more heterogeneous the dimensions are. The pooled figure is the
+        # RMS by definition, so E||z||^2 = D exactly — which is the whole point of
+        # the constant, since that is the radius the Gaussian noise sits at.
+        #
+        # DO NOT "fix" this into a per-dimension vector. It is tempting: per-dim
+        # normalisation makes every dimension unit variance, which looks tidier and
+        # matches the radius just as well. But the effective rank here is ~14 of 16
+        # (and was 15 of 64), so the dimensions below that rank carry almost no
+        # signal — only encoder noise. Dividing each by its own tiny standard
+        # deviation amplifies that noise to full amplitude and hands the denoiser
+        # pure noise dimensions to model as if they were data. One scalar leaves
+        # near-dead dimensions small, which is what you want.
+        real = block_masks.repeat_interleave(dataset.latents_per_block, dim=1)
+        scale = latents[real].std().item()
 
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        torch.save(latents, self.path)
+        # block_mask travels with the latents. Without it nothing downstream can
+        # tell a padded block from a real one — pad blocks hold a constant vector,
+        # which is trivially predictable and silently deflates any loss computed
+        # over them. They must be masked out, not merely represented.
+        torch.save(
+            {"latents": latents, "scale": scale, "block_mask": block_masks}, self.path
+        )
+        self._scale = scale
+
+    @property
+    def scale(self) -> float:
+        """The scaling constant. Reads it from disk if not already known."""
+        if self._scale is None:
+            self._scale = float(
+                torch.load(self.path, weights_only=True, map_location="cpu")["scale"]
+            )
+        return self._scale
 
     def load(self) -> torch.Tensor:
-        """Return cached latents, shape [n, N, D]."""
+        """Return cached latents, shape [n, N, D], **scaled** to roughly unit variance."""
         if not self.path.exists():
             raise FileNotFoundError(f"no latent cache at {self.path}; run build() first")
-        return torch.load(self.path, weights_only=True)
+        blob = torch.load(self.path, weights_only=True, map_location="cpu")
+        self._scale = float(blob["scale"])
+        return blob["latents"] / self._scale
+
+    def load_block_mask(self) -> torch.Tensor:
+        """[n, B] bool — True where the block holds a real step rather than padding."""
+        return torch.load(self.path, weights_only=True, map_location="cpu")["block_mask"]
+
+    def unscale(self, latents: torch.Tensor) -> torch.Tensor:
+        """Invert the scaling. Apply before handing anything to the decoder."""
+        return latents * self.scale

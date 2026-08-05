@@ -64,6 +64,7 @@ def train_vae(
     batch_size: int | None = None,
     vae_layers: int | None = None,
     vae_width: int | None = None,
+    latent_dim: int | None = None,
     resume: bool = False,
 ) -> dict[str, float]:
     """Train the step VAE and run both M2 gates. Returns the gate numbers.
@@ -109,7 +110,7 @@ def train_vae(
         "n_layers": vae_layers if vae_layers is not None else config.model.vae.n_layers,
         "n_heads": config.model.vae.n_heads,
         "latents_per_block": config.model.latents_per_block,
-        "latent_dim": config.model.latent_dim,
+        "latent_dim": latent_dim if latent_dim is not None else config.model.latent_dim,
         "kl_beta": config.train.kl_beta,
         "max_len": MAX_STEP_LEN,
     }
@@ -138,7 +139,7 @@ def train_vae(
     # The mid-run checkpoint is separate from the final one so an interrupted run
     # can never be mistaken for a finished one.
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
-    resume_path = CHECKPOINT_DIR / f"vae_{config.name}_resume.pt"
+    resume_path = CHECKPOINT_DIR / f"vae_{config.name}_d{arch['latent_dim']}_resume.pt"
     start_step = 1
     if resume and resume_path.exists():
         state = torch.load(resume_path, map_location=device, weights_only=False)
@@ -218,7 +219,8 @@ def train_vae(
         print("  PASS — shuffling the latent destroys reconstruction.")
 
     # ---- Checkpoint and latent cache ----------------------------------------
-    ckpt = CHECKPOINT_DIR / f"vae_{config.name}.pt"
+    tag = f"{config.name}_d{arch['latent_dim']}"
+    ckpt = CHECKPOINT_DIR / f"vae_{tag}.pt"
     torch.save({"model": vae.state_dict(), "config": str(config_path),
                 "arch": arch}, ckpt)
 
@@ -229,14 +231,18 @@ def train_vae(
         blocks=config.data.blocks_per_sequence,
         latents_per_block=config.model.latents_per_block,
     )
-    cache_path = CACHE_DIR / f"latents_{config.name}.pt"
+    cache_path = CACHE_DIR / f"latents_{tag}.pt"
     LatentCache(cache_path).build(dataset, vae)
     cached = LatentCache(cache_path).load()
 
     print()
     print(f"checkpoint    {ckpt}")
-    print(f"latent cache  {cache_path}  {tuple(cached.shape)}  "
-          f"[n, N=B*K, D]")
+    cache = LatentCache(cache_path)
+    print(f"latent cache  {cache_path}  {tuple(cached.shape)}  [n, N=B*K, D]")
+    print(f"scale         {cache.scale:.4f}  "
+          f"(scaled latent std {cached.std().item():.4f}, "
+          f"per-position norm {cached.flatten(0, 1).norm(dim=-1).mean().item():.3f} "
+          f"vs sqrt(D)={arch['latent_dim'] ** 0.5:.3f})")
     if dataset.n_dropped:
         print(f"              {dataset.n_dropped} traces dropped — more steps than "
               f"B={config.data.blocks_per_sequence}")
@@ -267,13 +273,15 @@ def main() -> None:
                    help="override model.vae.n_layers")
     p.add_argument("--vae-width", type=int, default=None,
                    help="override model.vae.d_model")
+    p.add_argument("--latent-dim", type=int, default=None,
+                   help="override model.latent_dim (D)")
     p.add_argument("--resume", action="store_true",
                    help="continue from checkpoints/vae_<name>_resume.pt if present")
     args = p.parse_args()
     train_vae(args.config, steps=args.steps, seed=args.seed,
               n_train=args.n_train, n_val=args.n_val, batch_size=args.batch,
               vae_layers=args.vae_layers, vae_width=args.vae_width,
-              resume=args.resume)
+              latent_dim=args.latent_dim, resume=args.resume)
 
 
 if __name__ == "__main__":

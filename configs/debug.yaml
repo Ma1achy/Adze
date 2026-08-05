@@ -7,14 +7,14 @@ data:
   n_val: 20
   max_depth: 3
   operand_max: 20
-  blocks_per_sequence: 6      # B
+  blocks_per_sequence: 7      # B — covers all depth-3 traces, drops nothing
   seed: 0
 
 model:
   latents_per_block: 4        # K
-  latent_dim: 64              # D
+  latent_dim: 16              # D — best unseen-step reconstruction (M2 sweep)
   vae:
-    n_layers: 2
+    n_layers: 4                # gate 1 needs 4; 2 plateaus at 94.7%
     d_model: 128
     n_heads: 4
   denoiser:
