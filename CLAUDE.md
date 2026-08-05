@@ -87,6 +87,14 @@ Apple Silicon, MPS backend. Two things bite:
 
 Keep `configs/debug.yaml` working at every milestone — 2 layers, 128 wide, 8 NFE, 100 examples. It's the difference between a 40-second iteration and a 40-minute one.
 
+**`debug.yaml`'s `n_train` cannot pass a generalisation gate, and shouldn't.** Its 100 traces are sized for M3's overfit gate, which wants a set small enough to memorise. M2's gate 1 measures held-out reconstruction and wants the opposite — at `n_train: 100` the VAE drives training loss to 0.005 and reaches 16% held-out. Override the *data* from the CLI (`--n-train`, `--n-val`, `--batch`) and leave the model size alone. Do not resize the config to make a gate pass.
+
+**M2's gate 1 needs 4 VAE layers, not debug.yaml's 2.** At 2×128 the VAE plateaus at 94.70% held-out exact match — 0.3pp short, with training loss already at 0.017, so it is a capacity ceiling and more steps do not move it. 4×128 reaches 95.65%. This is a real tension with "keep debug.yaml working": resolve it deliberately rather than by editing the config to make a gate pass. Pass `--vae-layers 4`.
+
+**Checkpoints record their own architecture** in an `arch` key. A run trained with `--vae-layers` does not match its config file, so rebuild from `arch`, never from the YAML.
+
+**Reconstruction fidelity and representation quality are close to unrelated.** A VAE can reconstruct at >97% while its latent space is spiky and awkward, and the symptom arrives at M3 disguised as "the denoiser won't train". `scripts/m2_interpolate.py` decodes latent midpoints as an early warning — it is a diagnostic, not a gate.
+
 ## Style
 
 - Type hints on public functions
