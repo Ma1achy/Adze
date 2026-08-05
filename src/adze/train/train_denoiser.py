@@ -30,7 +30,7 @@ from adze.eval.checks import overfit_one_batch
 from adze.invariants import MaskMode
 from adze.model.denoiser import Denoiser
 from adze.model.flow import interpolate, sample_timesteps, velocity_target
-from adze.model.masks import regime_a_mask
+from adze.model.masks import regime_a_mask, vectorised_regime_a_mask
 from adze.pad import masked_mean, real_positions
 
 CHECKPOINT_DIR = Path("checkpoints")
@@ -123,6 +123,97 @@ def regime_a_batch(
     }
 
 
+def vectorised_regime_a_batch(
+    z0: torch.Tensor,
+    block_ids: torch.Tensor,
+    blocks: int,
+    generator: torch.Generator | None = None,
+    block_mask: torch.Tensor | None = None,
+    t_shift: float | None = 1.5,
+    t: torch.Tensor | None = None,
+    eps: torch.Tensor | None = None,
+) -> dict[str, torch.Tensor]:
+    """Regime A with EVERY block denoised in one forward pass.
+
+    `regime_a_batch` is the naive algorithm: it samples one block index and scores
+    that block alone, because the clean context differs per block. With B=7 that
+    gives each block position 1/7th of the gradient steps — measured at ~46k draws
+    per position against the unconditional model's 5.1M, a ~110x starvation.
+
+    This is BD3-LM's fix (arXiv 2503.09573 §3.2). Run the model over the
+    concatenation [z_t ; z0] of length 2N under `vectorised_regime_a_mask`, and all
+    B conditionals are computed at once. Every block gets gradient every step.
+
+    Two index spaces, and conflating them is the failure mode to watch for:
+      - `block_ids` (real, [N]) builds the MASK. M_OBC fires on block(j) < block(i),
+        which is meaningless if the clean half's ids are offset past B.
+      - `block_ids_full` (offset, [2N]) drives the TIMESTEP GATHER only, so the
+        clean half can be handed t=0 through the same [batch, 2B] tensor.
+
+    Args:
+        t, eps: supply these to make the batch deterministic. Used by the
+            equivalence test, which must give both paths identical noise.
+
+    Returns:
+        dict with z_full, t_full, block_ids_full, target, mask, loss_mask.
+        `loss_mask` covers the NOISED half only; the clean half is context.
+    """
+    batch, n_positions, _ = z0.shape
+    device = z0.device
+    k = n_positions // blocks
+
+    if t is None:
+        if t_shift is None:
+            t = torch.rand(batch, blocks, generator=generator, device=device)
+        else:
+            t = sample_timesteps(
+                (batch, blocks), shift=t_shift, device=device, generator=generator
+            )
+    if eps is None:
+        eps = torch.randn(z0.shape, generator=generator, device=device)
+
+    z_t = interpolate(z0, eps, t)
+    target = velocity_target(z0, eps)
+
+    # Clean copy at t=0 — the same value the naive path gives prefix blocks, and
+    # the same value `draft` gives already-generated blocks. All three agree.
+    t_full = torch.cat([t, torch.zeros(batch, blocks, device=device)], dim=1)
+    block_ids_full = torch.cat([block_ids, block_ids + blocks])
+    z_full = torch.cat([z_t, z0], dim=1)
+
+    mask = vectorised_regime_a_mask(block_ids)
+
+    loss_mask = torch.ones(batch, n_positions, 1, dtype=torch.bool, device=device)
+    if block_mask is not None:
+        loss_mask = real_positions(block_mask, k)
+
+    return {
+        "z_full": z_full,
+        "t_full": t_full,
+        "block_ids_full": block_ids_full,
+        "target": target,
+        "mask": mask,
+        "loss_mask": loss_mask,
+        "t": t,
+        "eps": eps,
+    }
+
+
+def vectorised_regime_a_loss(model: Denoiser, batch: dict[str, torch.Tensor]):
+    """Velocity MSE over every block's noised half, real positions only."""
+    pred = model(
+        batch["z_full"],
+        batch["t_full"],
+        batch["block_ids_full"],
+        MaskMode.CAUSAL,
+        mask=batch["mask"],
+    )
+    n = batch["target"].shape[1]
+    if batch["loss_mask"].sum() == 0:
+        return (pred * 0).sum()
+    return masked_mean((pred[:, :n] - batch["target"]) ** 2, batch["loss_mask"])
+
+
 def regime_a_loss(model: Denoiser, batch: dict[str, torch.Tensor], block_ids: torch.Tensor):
     """Velocity MSE over the noised block only, real positions only.
 
@@ -154,6 +245,7 @@ def train_denoiser(
     t_shift: float | None = 1.5,
     batch_size: int | None = None,
     lr: float | None = None,
+    vectorised: bool = True,
 ) -> dict[str, float]:
     """Args:
         config_path: yaml config.
@@ -169,6 +261,10 @@ def train_denoiser(
             which is a different quantity from the compute a result needs — and
             resizing the YAML to make a number move is what CLAUDE.md forbids.
             Overriding here keeps the config honest and the run explicit.
+        vectorised: compute every block's loss in one pass (BD3-LM's algorithm).
+            The default, because the naive per-block form starves each position by
+            ~110x. False keeps the naive path, retained for the equivalence test
+            and for reproducing pre-vectorisation results.
     """
     if mixed:
         raise NotImplementedError("regime B and the 90/10 mix are M6, not M3")
@@ -272,11 +368,18 @@ def train_denoiser(
     model.train()
     for step in range(1, n_steps + 1):
         idx = torch.randint(0, latents.shape[0], (n_batch,), device=device)
-        batch = regime_a_batch(
-            latents[idx], block_ids, blocks, block_mask=block_mask[idx],
-            t_shift=t_shift,
-        )
-        loss = regime_a_loss(model, batch, block_ids)
+        if vectorised:
+            batch = vectorised_regime_a_batch(
+                latents[idx], block_ids, blocks, block_mask=block_mask[idx],
+                t_shift=t_shift,
+            )
+            loss = vectorised_regime_a_loss(model, batch)
+        else:
+            batch = regime_a_batch(
+                latents[idx], block_ids, blocks, block_mask=block_mask[idx],
+                t_shift=t_shift,
+            )
+            loss = regime_a_loss(model, batch, block_ids)
 
         opt.zero_grad()
         loss.backward()
@@ -285,7 +388,8 @@ def train_denoiser(
         sched.step()
 
         if step % max(1, n_steps // 10) == 0 or step == 1:
-            print(f"  step {step:>6}  loss {loss.item():.6f}  block {int(batch['block'])}")
+            note = "all" if vectorised else int(batch["block"])
+            print(f"  step {step:>6}  loss {loss.item():.6f}  block {note}")
 
     print(f"\ntrained in {time.perf_counter() - t0:.1f}s")
 
@@ -293,6 +397,7 @@ def train_denoiser(
     # The shift goes in the filename: a sweep over shifts would otherwise
     # overwrite its own earlier runs, and the comparison needs all of them.
     suffix = "" if t_shift == 1.5 else f"_shift{t_shift}"
+    suffix += "" if vectorised else "_naive"
     ckpt = CHECKPOINT_DIR / f"denoiser_{config.name}_d{latents.shape[-1]}{suffix}.pt"
     torch.save(
         {
@@ -326,11 +431,13 @@ def main() -> None:
     p.add_argument("--t-shift", type=float, default=1.5,
                    help="logit-normal shift; <1 concentrates on small t")
     p.add_argument("--batch", type=int, default=None)
+    p.add_argument("--naive", action="store_true",
+                   help="use the pre-vectorisation per-block algorithm")
     p.add_argument("--lr", type=float, default=None)
     args = p.parse_args()
     train_denoiser(args.config, steps=args.steps, gate_steps=args.gate_steps,
                    latent_dim=args.latent_dim, seed=args.seed, t_shift=args.t_shift,
-                   batch_size=args.batch, lr=args.lr)
+                   batch_size=args.batch, lr=args.lr, vectorised=not args.naive)
 
 
 if __name__ == "__main__":

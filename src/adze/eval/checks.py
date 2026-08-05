@@ -102,6 +102,87 @@ def latent_use_check(
     }
 
 
+def _overfit_vectorised(
+    model, batch, steps, lr, t_shift, threshold,
+    make_batch, loss_fn, MaskMode, masked_mean, real_positions,
+) -> dict[str, float]:
+    """Overfit gate on the vectorised training path.
+
+    Every block is denoised every step, so every block gets a loss reading every
+    step. The naive gate's per-block ratios were sampled — a block was only
+    measured on the steps where its index happened to be drawn — which made the
+    result depend on the draw sequence as well as on the model. Reading all blocks
+    every step removes that source of variance without touching the threshold.
+    """
+    import torch as _torch
+
+    z0 = batch["z0"]
+    block_ids = batch["block_ids"]
+    blocks = int(batch["blocks"])
+    block_mask = batch.get("block_mask")
+    k = z0.shape[1] // blocks
+
+    def per_block_losses(one) -> dict[int, float]:
+        """Loss for each block from a single forward pass."""
+        with _torch.no_grad():
+            pred = model(
+                one["z_full"], one["t_full"], one["block_ids_full"],
+                MaskMode.CAUSAL, mask=one["mask"],
+            )[:, : z0.shape[1]]
+        err = (pred - one["target"]) ** 2
+        out = {}
+        for b in range(blocks):
+            keep = one["loss_mask"] & (block_ids == b).view(1, -1, 1)
+            if keep.sum() > 0:
+                out[b] = masked_mean(err, keep).item()
+        return out
+
+    opt = _torch.optim.AdamW(model.parameters(), lr=lr)
+
+    probe = make_batch(z0, block_ids, blocks, block_mask=block_mask, t_shift=t_shift)
+    initial = per_block_losses(probe)
+
+    recent: dict[int, list[float]] = {b: [] for b in initial}
+    crossed: dict[int, int] = {}
+
+    model.train()
+    for step in range(steps):
+        one = make_batch(z0, block_ids, blocks, block_mask=block_mask, t_shift=t_shift)
+        loss = loss_fn(model, one)
+        opt.zero_grad()
+        loss.backward()
+        _torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        opt.step()
+
+        if step % 10 == 0 or step == steps - 1:
+            for b, v in per_block_losses(one).items():
+                recent[b].append(v)
+                if b not in crossed and len(recent[b]) >= 20:
+                    window = recent[b][-20:]
+                    if sum(window) / len(window) < threshold * initial[b]:
+                        crossed[b] = step
+
+    def tail(values: list[float]) -> float:
+        window = values[-max(1, len(values) // 10) :]
+        return sum(window) / len(window)
+
+    per_block = {b: tail(v) / initial[b] for b, v in recent.items() if v}
+    conditioned = [v for b, v in crossed.items() if b > 0]
+    all_conditioned = [b for b in initial if b > 0]
+
+    return {
+        "initial_loss": sum(initial.values()) / len(initial),
+        "final_loss": sum(tail(v) for v in recent.values() if v) / len(per_block),
+        "per_block": per_block,
+        "steps_to_threshold": crossed,
+        "slowest_crossing": (
+            max(conditioned)
+            if len(conditioned) == len(all_conditioned)
+            else float("inf")
+        ),
+    }
+
+
 def overfit_one_batch(
     model: torch.nn.Module,
     batch: dict[str, torch.Tensor],
@@ -109,6 +190,7 @@ def overfit_one_batch(
     lr: float = 1e-3,
     t_shift: float | None = 1.5,
     threshold: float = 0.02,
+    vectorised: bool = True,
 ) -> dict[str, float]:
     """M3 GATE — can the model drive loss to near zero on 8 examples?
 
@@ -145,7 +227,21 @@ def overfit_one_batch(
     conditioning fixes at M5. `per_block` is returned so the two are never
     confused.
     """
-    from adze.train.train_denoiser import regime_a_batch, regime_a_loss
+    from adze.train.train_denoiser import (
+        regime_a_batch,
+        regime_a_loss,
+        vectorised_regime_a_batch,
+        vectorised_regime_a_loss,
+    )
+    from adze.invariants import MaskMode
+    from adze.pad import masked_mean, real_positions
+
+    if vectorised:
+        return _overfit_vectorised(
+            model, batch, steps, lr, t_shift, threshold,
+            vectorised_regime_a_batch, vectorised_regime_a_loss,
+            MaskMode, masked_mean, real_positions,
+        )
 
     z0 = batch["z0"]
     block_ids = batch["block_ids"]

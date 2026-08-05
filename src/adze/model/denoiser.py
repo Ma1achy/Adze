@@ -230,6 +230,25 @@ class Denoiser(nn.Module):
         nn.init.zeros_(self.out_proj.weight)
         nn.init.zeros_(self.out_proj.bias)
 
+    def _positions(self, length: int) -> torch.Tensor:
+        """Positional embedding for a sequence of `length`.
+
+        Vectorised regime A feeds [z_t ; z0], length 2N. The two halves occupy the
+        SAME sequence positions — they are the noised and clean views of one
+        sequence — so the embedding is tiled rather than extended. What separates
+        them is the timestep conditioning: the clean half carries t=0. Tiling adds
+        no parameters and leaves the sampling path, which passes length N,
+        bit-identical.
+        """
+        if length <= self.n_positions:
+            return self.pos[:, :length]
+        if length % self.n_positions != 0:
+            raise ValueError(
+                f"sequence length {length} is neither <= n_positions "
+                f"({self.n_positions}) nor a multiple of it"
+            )
+        return self.pos.repeat(1, length // self.n_positions, 1)
+
     def forward(
         self,
         latents: torch.Tensor,
@@ -258,7 +277,7 @@ class Denoiser(nn.Module):
 
         attn_mask = build_mask(block_ids, mode) if mask is None else mask
 
-        x = self.in_proj(latents) + self.pos[:, : latents.shape[1]]
+        x = self.in_proj(latents) + self._positions(latents.shape[1])
         for cond, layer in zip(self.cond, self.layers):
             x = layer(x, cond(timesteps, mode, block_ids), attn_mask)
 
