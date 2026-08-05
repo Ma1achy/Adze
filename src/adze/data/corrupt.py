@@ -13,7 +13,8 @@ See tests/test_m1_corrupt.py for the acceptance criteria.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import random
+from dataclasses import dataclass, replace
 
 from adze.data.generate import Trace
 
@@ -49,7 +50,20 @@ def corrupt_step(
         rng_seed: seed for the perturbation.
         delta_max: maximum magnitude of the change. Must not produce a no-op.
     """
-    raise NotImplementedError
+    if not 0 <= block_index < len(trace.steps):
+        raise ValueError(f"block_index {block_index} out of range")
+    if delta_max < 1:
+        raise ValueError(f"delta_max must be >= 1, got {delta_max}")
+
+    rng = random.Random(rng_seed)
+    delta = rng.choice([d for d in range(-delta_max, delta_max + 1) if d != 0])
+
+    original = trace.steps[block_index]
+    steps = list(trace.steps)
+    # Only the result moves. Operands, provenance, and every downstream step are
+    # left exactly as they were — that inconsistency is the signal being studied.
+    steps[block_index] = replace(original, result=original.result + delta)
+    return replace(trace, steps=tuple(steps))
 
 
 def make_pair(
@@ -62,9 +76,27 @@ def make_pair(
     Early corruption is what makes the experiment meaningful — the later steps
     then carry the evidence needed to detect and repair it.
 
+    The final step is never corrupted. A contradiction placed there has no
+    downstream context to be visible from, so causal and global regeneration face
+    identical evidence and the comparison the experiment rests on is vacuous.
+    `prefer_early` makes that unlikely but does not prevent it; excluding the last
+    index does.
+
     Args:
         trace: a valid trace with at least 2 steps.
         rng_seed: seed for both step choice and perturbation.
         prefer_early: bias the corrupted index toward the first half of the chain.
     """
-    raise NotImplementedError
+    n = len(trace.steps)
+    if n < 2:
+        raise ValueError(f"need at least 2 steps to build a pair, got {n}")
+
+    rng = random.Random(rng_seed)
+
+    # Candidates exclude the final step in both branches.
+    limit = max(1, (n + 1) // 2) if prefer_early else n - 1
+    limit = min(limit, n - 1)
+    block_index = rng.randrange(limit)
+
+    corrupted = corrupt_step(trace, block_index, rng_seed=rng.randrange(2**31))
+    return CorruptedPair(clean=trace, corrupted=corrupted, block_index=block_index)
