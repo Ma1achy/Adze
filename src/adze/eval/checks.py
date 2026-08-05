@@ -107,6 +107,8 @@ def overfit_one_batch(
     batch: dict[str, torch.Tensor],
     steps: int = 500,
     lr: float = 1e-3,
+    t_shift: float | None = 1.5,
+    threshold: float = 0.02,
 ) -> dict[str, float]:
     """M3 GATE — can the model drive loss to near zero on 8 examples?
 
@@ -122,5 +124,105 @@ def overfit_one_batch(
 
     PASS: final loss near zero.
     FAIL: do not proceed to full training.
+
+    Args:
+        model: the denoiser.
+        batch: {"z0": [8, N, D] clean latents, "block_ids": [N], "blocks": B}.
+        steps: optimiser steps on that single batch.
+        lr: learning rate for this check only.
+
+    The batch is fixed but the *noise* is resampled every step, as it is in real
+    training. Freezing eps too would let the model memorise one input-output pair
+    and pass a gate that no longer tests the conditioning path — the very thing
+    this is here to check.
+
+    **Block 0 has an irreducible floor.** Regime A gives the denoised block its
+    preceding blocks as clean context, and block 0 has none. At high `t` its input
+    is nearly pure noise with nothing to identify which example it belongs to, so
+    the best available prediction is the mean over the batch. Measured on 8
+    examples, b=0 settles near 5% of its initial loss while b=3 and b=6 reach ~1%.
+    That is the unconditional case, not a wiring fault, and it is what question
+    conditioning fixes at M5. `per_block` is returned so the two are never
+    confused.
     """
-    raise NotImplementedError("M3 — not this milestone")
+    from adze.train.train_denoiser import regime_a_batch, regime_a_loss
+
+    z0 = batch["z0"]
+    block_ids = batch["block_ids"]
+    blocks = int(batch["blocks"])
+    block_mask = batch.get("block_mask")
+
+    opt = torch.optim.AdamW(model.parameters(), lr=lr)
+    model.train()
+
+    # Measure the baseline for every block BEFORE any optimisation. Recording each
+    # block's first *observed* loss instead is wrong by a factor of ten: blocks are
+    # sampled at random, so by the time block b first comes up the shared weights
+    # have already trained on other blocks and collapsed toward predicting the
+    # mean. That deflates the baseline and makes every ratio look worse than it is.
+    initial: dict[int, float] = {}
+    with torch.no_grad():
+        for b in range(blocks):
+            probe = regime_a_batch(
+                z0, block_ids, blocks, force_block=b, block_mask=block_mask,
+                t_shift=t_shift,
+            )
+            # A block that is padding for every example in the batch has nothing to
+            # score. Skip it rather than record a zero that reads as a pass.
+            if probe["loss_mask"].sum() == 0:
+                continue
+            initial[b] = regime_a_loss(model, probe, block_ids).item()
+
+    recent: dict[int, list[float]] = {b: [] for b in initial}
+    # Step at which each block's running mean first crosses the threshold. This is
+    # the quantity that compares timestep schedules: final loss at a fixed budget
+    # conflates "converges lower" with "converges sooner".
+    crossed: dict[int, int] = {}
+
+    for step in range(steps):
+        one = regime_a_batch(
+            z0, block_ids, blocks, block_mask=block_mask, t_shift=t_shift
+        )
+        if one["loss_mask"].sum() == 0:
+            continue
+        loss = regime_a_loss(model, one, block_ids)
+
+        opt.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        opt.step()
+
+        b_i = int(one["block"])
+        if b_i in recent:
+            recent[b_i].append(loss.item())
+            if b_i not in crossed and len(recent[b_i]) >= 20:
+                window = recent[b_i][-20:]
+                if sum(window) / len(window) < threshold * initial[b_i]:
+                    crossed[b_i] = step
+
+    # Average the tail rather than reading one final step: a single step's loss is
+    # dominated by whichever t and block it happened to draw, and reporting that
+    # makes the gate a coin flip.
+    def tail(values: list[float]) -> float:
+        window = values[-max(1, len(values) // 10):]
+        return sum(window) / len(window)
+
+    per_block = {b: tail(v) / initial[b] for b, v in recent.items() if v}
+    initial_loss = sum(initial.values()) / len(initial)
+    final_loss = sum(tail(v) for v in recent.values() if v) / len(per_block)
+
+    # Conditioned blocks only: block 0 has no prefix and may never cross.
+    conditioned_crossings = [v for b, v in crossed.items() if b > 0]
+    all_conditioned = [b for b in initial if b > 0]
+
+    return {
+        "initial_loss": float(initial_loss),
+        "final_loss": float(final_loss),
+        "per_block": per_block,
+        "steps_to_threshold": crossed,
+        "slowest_crossing": (
+            max(conditioned_crossings)
+            if len(conditioned_crossings) == len(all_conditioned)
+            else float("inf")
+        ),
+    }

@@ -29,11 +29,33 @@ def build_mask(block_ids: torch.Tensor, mode: MaskMode) -> torch.Tensor:
     Returns:
         [N, N] bool tensor. True means "position i may attend to position j".
     """
-    raise NotImplementedError
+    if block_ids.ndim != 1:
+        raise ValueError(f"block_ids must be [N], got shape {tuple(block_ids.shape)}")
+    if (block_ids[1:] < block_ids[:-1]).any():
+        raise ValueError("block_ids must be non-decreasing")
+
+    n = block_ids.shape[0]
+
+    if mode is MaskMode.GLOBAL:
+        return torch.ones(n, n, dtype=torch.bool, device=block_ids.device)
+
+    if mode is MaskMode.CAUSAL:
+        # query block on rows, key block on columns; j is visible from i when its
+        # block is not in i's future. Equality keeps a block bidirectional inside
+        # itself, which is what makes this block-causal rather than token-causal.
+        return block_ids.unsqueeze(0) <= block_ids.unsqueeze(1)
+
+    raise ValueError(f"unknown mask mode: {mode}")
 
 
 def visible_prefix_mask(block_ids: torch.Tensor, up_to_block: int) -> torch.Tensor:
     """Mask for regime A drafting: blocks after `up_to_block` are absent entirely.
+
+    "Absent" is stronger than "not attended to": later blocks are removed in *both*
+    directions, so they neither inform nor are informed by the prefix. Within the
+    surviving prefix the mask is fully bidirectional — block `up_to_block` is the
+    one being denoised and it may read every earlier block, while the earlier blocks
+    are clean context.
 
     Args:
         block_ids: [N]
@@ -43,4 +65,8 @@ def visible_prefix_mask(block_ids: torch.Tensor, up_to_block: int) -> torch.Tens
     Returns:
         [N, N] bool tensor.
     """
-    raise NotImplementedError
+    if block_ids.ndim != 1:
+        raise ValueError(f"block_ids must be [N], got shape {tuple(block_ids.shape)}")
+
+    visible = block_ids <= up_to_block
+    return visible.unsqueeze(0) & visible.unsqueeze(1)

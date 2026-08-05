@@ -11,20 +11,298 @@ blocks outside S clean; global mask; loss on S.
 M6 requires retraining from scratch — mixing changes what the model learns, not
 just how it is used. Acceptance for M6 is that pass-one quality does NOT regress
 against the M5 baseline.
+
+Usage:
+    python -m adze.train.train_denoiser configs/debug.yaml
 """
 
 from __future__ import annotations
 
+import argparse
+import time
 from pathlib import Path
 
+import torch
 
-def train_denoiser(config_path: Path, mixed: bool = False) -> None:
+from adze.config import load_config
+from adze.data.dataset import LatentCache
+from adze.eval.checks import overfit_one_batch
+from adze.invariants import MaskMode
+from adze.model.denoiser import Denoiser
+from adze.model.flow import interpolate, sample_timesteps, velocity_target
+from adze.model.masks import build_mask, visible_prefix_mask
+
+CHECKPOINT_DIR = Path("checkpoints")
+CACHE_DIR = Path("data/cache")
+
+
+def regime_a_batch(
+    z0: torch.Tensor,
+    block_ids: torch.Tensor,
+    blocks: int,
+    generator: torch.Generator | None = None,
+    force_block: int | None = None,
+    block_mask: torch.Tensor | None = None,
+    t_shift: float | None = 1.5,
+) -> dict[str, torch.Tensor]:
+    """Build one regime A (draft) training batch.
+
+    Sample a block `b`, noise it, leave blocks < b clean, remove blocks > b, and
+    score only block b.
+
+    One `b` is drawn for the whole batch rather than per example. The mask is an
+    [N, N] function of `b`, so a per-example `b` would need a per-example mask and
+    a batched attention mask; drawing per batch keeps a single mask and costs only
+    that consecutive steps see one block each. Over training every block is
+    sampled uniformly often.
+
+    Args:
+        z0:        [batch, N, D] clean latents.
+        block_ids: [N]
+        blocks:    B.
+        t_shift:   shift for logit-normal timestep sampling; None samples t
+                   uniformly, which is the worse-conditioned baseline kept only
+                   so the two can be compared at matched budget.
+
+    Returns:
+        dict with z_t, t, target, mask, loss_mask, and the sampled block index.
+    """
+    batch, n_positions, _ = z0.shape
+    device = z0.device
+
+    if force_block is not None:
+        b = force_block
+    elif block_mask is None:
+        b = int(torch.randint(0, blocks, (1,), generator=generator).item())
+    else:
+        # Sample only among blocks that are real for at least one example. A block
+        # that is padding across the whole batch has no target: its loss is zero,
+        # its gradient is zero, and the step is wasted. With B=7 and traces of 3-7
+        # steps that is ~61% of block-6 draws and ~11% of all steps, which also
+        # starves the last blocks of the gradient they do need.
+        available = torch.nonzero(block_mask.any(dim=0), as_tuple=False).flatten()
+        pick = int(torch.randint(0, len(available), (1,), generator=generator).item())
+        b = int(available[pick].item())
+
+    # t = 0 clean everywhere, then noise block b only. Blocks after b are absent,
+    # so their timestep is never read — set to 1 to make that explicit rather than
+    # leaving a value that looks meaningful.
+    t = torch.zeros(batch, blocks, device=device)
+    if t_shift is None:
+        t[:, b] = torch.rand(batch, generator=generator, device=device)
+    else:
+        t[:, b] = sample_timesteps(
+            (batch,), shift=t_shift, device=device, generator=generator
+        )
+    t[:, b + 1 :] = 1.0
+
+    eps = torch.randn(z0.shape, generator=generator, device=device)
+    z_t = interpolate(z0, eps, t)
+    target = velocity_target(z0, eps)
+
+    # Causal across blocks AND later blocks absent entirely. The build plan says
+    # "causal mask", the mask tests say later blocks are absent; regime A is both.
+    mask = build_mask(block_ids, MaskMode.CAUSAL) & visible_prefix_mask(block_ids, b)
+
+    # Score block b, but only for examples where block b holds a real step. A
+    # padded block carries the same constant vector every time, so it is trivially
+    # predictable and scoring it deflates the loss toward zero without the model
+    # having learned anything. Pad blocks are masked out, not merely represented.
+    loss_mask = (block_ids == b).view(1, n_positions, 1).expand(batch, -1, 1).clone()
+    if block_mask is not None:
+        loss_mask = loss_mask & block_mask[:, b].view(batch, 1, 1)
+
+    return {
+        "z_t": z_t,
+        "t": t,
+        "target": target,
+        "mask": mask,
+        "loss_mask": loss_mask,
+        "block": torch.tensor(b),
+    }
+
+
+def regime_a_loss(model: Denoiser, batch: dict[str, torch.Tensor], block_ids: torch.Tensor):
+    """Velocity MSE over the noised block only, real positions only.
+
+    Returns NaN-free zero if the sampled block is padding for every example in the
+    batch; callers should skip such steps rather than average them in.
+    """
+    pred = model(
+        batch["z_t"],
+        batch["t"],
+        block_ids,
+        MaskMode.CAUSAL,
+        mask=batch["mask"],
+    )
+    err = (pred - batch["target"]) ** 2
+    denom = batch["loss_mask"].sum() * err.shape[-1]
+    if denom == 0:
+        return (pred * 0).sum()
+    return (err * batch["loss_mask"]).sum() / denom
+
+
+def train_denoiser(
+    config_path: Path,
+    mixed: bool = False,
+    steps: int | None = None,
+    gate_steps: int = 6000,
+    latent_dim: int | None = None,
+    seed: int = 0,
+) -> dict[str, float]:
     """Args:
         config_path: yaml config.
         mixed: False for M3 (regime A only), True for M6 (90/10 mix).
     """
-    raise NotImplementedError
+    if mixed:
+        raise NotImplementedError("regime B and the 90/10 mix are M6, not M3")
+
+    config = load_config(config_path)
+    torch.manual_seed(seed)
+    device = torch.device(config.device)
+
+    d = latent_dim if latent_dim is not None else config.model.latent_dim
+    cache = LatentCache(CACHE_DIR / f"latents_{config.name}_d{d}.pt")
+    latents = cache.load().to(device)          # already scaled to ~unit variance
+    block_mask = cache.load_block_mask().to(device)   # [n, B] real vs padded
+
+    blocks = config.data.blocks_per_sequence
+    k = config.model.latents_per_block
+    block_ids = torch.repeat_interleave(torch.arange(blocks), k).to(device)
+
+    model = Denoiser(
+        latent_dim=latents.shape[-1],
+        d_model=config.model.denoiser.d_model,
+        n_layers=config.model.denoiser.n_layers,
+        n_heads=config.model.denoiser.n_heads,
+        latents_per_block=k,
+        blocks=blocks,
+    ).to(device)
+
+    print(f"config        {config_path}  ({config.name})")
+    print(f"device        {device}")
+    # Report on real positions only. Averaging in pad blocks understates both
+    # figures — they hold one constant vector — and makes the scaling look broken
+    # when it is exact.
+    real = block_mask.repeat_interleave(k, dim=1)
+    real_latents = latents[real]
+    root_d = latents.shape[-1] ** 0.5
+    print(f"latents       {tuple(latents.shape)}  [n, N=B*K, D]  scale {cache.scale:.4f}")
+    print(f"              real positions {real.float().mean().item():.1%}, "
+          f"std {real_latents.std().item():.4f}, RMS norm "
+          f"{real_latents.pow(2).sum(-1).mean().sqrt().item():.3f} "
+          f"vs sqrt(D)={root_d:.3f}")
+    print(f"params        {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M")
+    print(f"shapes        B={blocks} K={k} D={latents.shape[-1]} N={blocks * k}")
+    print()
+
+    # ---- HARD GATE: overfit one batch ---------------------------------------
+    print("=" * 74)
+    print("GATE — overfit one batch (8 examples, loss to near zero)")
+    print("=" * 74)
+    # config.train.steps is the debug loop's fast-iteration budget, not an
+    # optimisation budget for this gate. At 500 steps / lr 3e-4 the model reaches
+    # only 53% of initial and the gate reads as miswiring; at 6000 / 1e-3 it
+    # overfits properly. Giving the gate enough steps is not lowering the bar —
+    # the threshold below is unchanged.
+    gate = overfit_one_batch(
+        model,
+        {
+            "z0": latents[:8],
+            "block_ids": block_ids,
+            "blocks": torch.tensor(blocks),
+            "block_mask": block_mask[:8],
+        },
+        steps=gate_steps,
+        lr=1e-3,
+    )
+    print(f"  initial loss  {gate['initial_loss']:.6f}")
+    print(f"  final loss    {gate['final_loss']:.6f}")
+    print("  per block (final / initial):")
+    for b, ratio in sorted(gate["per_block"].items()):
+        note = "   <- no prefix; unconditional, floors above the rest" if b == 0 else ""
+        print(f"    b={b}  {ratio:6.2%}{note}")
+    # Block 0 is scored but excluded from the threshold: with no preceding context
+    # it cannot be driven to zero until question conditioning arrives at M5.
+    conditioned = [r for b, r in gate["per_block"].items() if b > 0]
+    worst = max(conditioned)
+    passed = worst < 0.02
+    print(f"  {'PASS' if passed else 'FAIL'} — worst conditioned block "
+          f"{worst:.2%} of initial (threshold 2%)")
+    if not passed:
+        print("\n  Something is miswired. Suspect adze.model.flow.broadcast_t and")
+        print("  adze.model.masks.build_mask before suspecting anything conceptual.")
+        return gate
+
+    # ---- Full regime A training ---------------------------------------------
+    n_steps = steps if steps is not None else config.train.steps
+    model = Denoiser(
+        latent_dim=latents.shape[-1],
+        d_model=config.model.denoiser.d_model,
+        n_layers=config.model.denoiser.n_layers,
+        n_heads=config.model.denoiser.n_heads,
+        latents_per_block=k,
+        blocks=blocks,
+    ).to(device)
+    opt = torch.optim.AdamW(model.parameters(), lr=config.train.lr)
+    sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=n_steps)
+
+    print()
+    print(f"regime A training — {n_steps} steps, batch {config.train.batch_size}")
+    t0 = time.perf_counter()
+    model.train()
+    for step in range(1, n_steps + 1):
+        idx = torch.randint(0, latents.shape[0], (config.train.batch_size,), device=device)
+        batch = regime_a_batch(
+            latents[idx], block_ids, blocks, block_mask=block_mask[idx]
+        )
+        loss = regime_a_loss(model, batch, block_ids)
+
+        opt.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        opt.step()
+        sched.step()
+
+        if step % max(1, n_steps // 10) == 0 or step == 1:
+            print(f"  step {step:>6}  loss {loss.item():.6f}  block {int(batch['block'])}")
+
+    print(f"\ntrained in {time.perf_counter() - t0:.1f}s")
+
+    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+    ckpt = CHECKPOINT_DIR / f"denoiser_{config.name}_d{latents.shape[-1]}.pt"
+    torch.save(
+        {
+            "model": model.state_dict(),
+            "config": str(config_path),
+            "arch": {
+                "latent_dim": latents.shape[-1],
+                "d_model": config.model.denoiser.d_model,
+                "n_layers": config.model.denoiser.n_layers,
+                "n_heads": config.model.denoiser.n_heads,
+                "latents_per_block": k,
+                "blocks": blocks,
+            },
+            "latent_scale": cache.scale,
+        },
+        ckpt,
+    )
+    print(f"checkpoint    {ckpt}")
+
+    return gate
+
+
+def main() -> None:
+    p = argparse.ArgumentParser()
+    p.add_argument("config", type=Path, nargs="?", default=Path("configs/debug.yaml"))
+    p.add_argument("--steps", type=int, default=None)
+    p.add_argument("--gate-steps", type=int, default=6000)
+    p.add_argument("--latent-dim", type=int, default=None)
+    p.add_argument("--seed", type=int, default=0)
+    args = p.parse_args()
+    train_denoiser(args.config, steps=args.steps, gate_steps=args.gate_steps,
+                   latent_dim=args.latent_dim, seed=args.seed)
 
 
 if __name__ == "__main__":
-    raise SystemExit("not implemented — see docs/build-plan.md M3")
+    main()
