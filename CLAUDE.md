@@ -69,7 +69,7 @@ z_{t-dt} = z_t - dt * u_theta(z_t, t, ctx)      # integrate t: 1 -> 0
 - learned block segmentation
 - partial re-noising (`t < 1` in pass two)
 - uncertainty-based block selection
-- semantic-correction objective
+- rollout adaptation, semantic-correction objective
 - looped refinement, adaptive compute
 - byte-level input, learned input tokenisation
 - distillation, RL
@@ -81,7 +81,33 @@ These are all in design §8 as deliberate future work. They are excluded on purp
 **Promoted off this list at M4 — do not re-add them:**
 
 - **SDE sampler.** `DEFAULT_ETA = 1.0` in `adze.sample.draft`. Promoted on 38.6% → 70.7% unconditional truth (95% of the 74.5% ceiling), with `eta = 0` reducing to the Euler step algebraically and `tests/test_m4_stochastic.py` holding that permanently. EDM churn is implemented alongside it and defaults **off** — it helps at `eta = 0` and harms at `eta = 1`, so `eta = 1, S_churn = 0` is a measured optimum.
-- **Rollout adaptation (stage 2).** Promoted to **post-M5**, not to now. A generated prefix is worse than no prefix (45.9% vs 53.9%) and the gap widens as the sampler improves. Read the caveat in design §3.1 before implementing: the same-model arm suggests the prefix is uninformative rather than that the model is derailed by its own errors, and those want different fixes.
+(Rollout adaptation was promoted here at M4 and **un-promoted** in the same milestone — see the retired findings below. It is back on the not-in-v0 list above.)
+
+## Retired findings — measured, believed, and since disproved
+
+Keep these. Each was a real measurement that looked like the thing and wasn't, and
+each cost sessions.
+
+- **"Live-dimension shrinkage explains the sampler failure."** Variance ratio
+  0.831 looked causal; ablating it on real latents cost 1.7pp. Retired.
+- **"The sampler reproduces the marginal."** Rested on the per-dimension latent
+  variance ratio reaching 1.000. But **matching second moments in a 16-dim latent
+  space places almost no constraint on the semantic distribution the decoder
+  produces.** The same model generates the easy operand bin at 47.5% against 4.5%
+  in real data — a gross distributional failure a variance check is structurally
+  blind to. Retired for the same reason as shrinkage.
+- **"The generated prefix is worse than none, so exposure bias."** True premise,
+  wrong diagnosis: `correct ≈ generated` means there are no own-errors to be
+  robust to. Rollout adaptation was promoted and un-promoted on this.
+- **"The prefix carries 2-7% of the information."** kNN artifact in 64-dim prefix
+  space. Destroying the prefix actually costs +1.42 nats.
+
+**A distribution can match on every moment you check and still be wrong where it
+matters.** The general form: a statistic computed in latent space does not
+constrain the semantic distribution downstream of a decoder, because the decoder
+is not required to be an isometry. Check the thing you care about in the space
+where you care about it. This is why **distribution-matched truth**, not latent
+statistics, is the standard readout.
 
 **Every M4 number recorded before the promotion was measured at `eta = 0`.** Pass `eta=0.0` explicitly to reproduce them; the historical diagnostic scripts pin it.
 
@@ -119,6 +145,11 @@ algorithm scores one block per step and needs ~30k gate steps to cross the 2%
 threshold; vectorised crosses it in 6k and lands lower (0.8% vs 1.14%). Budget
 accordingly: a 6k naive run is under-converged, and several M4 diagnostics taken
 on one turned out to be measuring undertraining rather than the thing they named.
+
+**Distribution-matched truth is the standard readout.** `adze.eval.readout` —
+matched as the headline, raw pooled truth kept and labelled, generated vs real
+magnitude histograms printed alongside, per-bin ceilings rather than one pooled
+one. Do not report a bare pooled truth figure.
 
 **A pooled rate is not a rate unless the two sides are distribution-matched.**
 The model's generated steps land in the 10-29 operand bin 51% of the time; real
