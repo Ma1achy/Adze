@@ -48,7 +48,7 @@ from pathlib import Path
 
 import torch
 
-from adze.config import leaf_pool, load_config
+from adze.config import load_config, trace_kwargs
 from adze.data.corrupt import make_pair
 from adze.data.dataset import LatentCache, TraceDataset
 from adze.data.generate import generate_dataset
@@ -76,9 +76,7 @@ def encode_split(vae, config, arch, n: int, seed_offset: int, device) -> tuple:
     traces = generate_dataset(
         n=n,
         seed=config.data.seed + seed_offset,
-        max_depth=config.data.max_depth,
-        operand_max=config.data.operand_max,
-        leaf_values=leaves,
+        **tkw,
     )
     pairs = [make_pair(t, rng_seed=i) for i, t in enumerate(traces) if len(t.steps) >= 2]
     dataset = TraceDataset(
@@ -138,7 +136,7 @@ def main() -> None:
 
     config = load_config(args.config)
 
-    leaves = leaf_pool(config)
+    tkw = trace_kwargs(config)
     device = torch.device(config.device)
     tokeniser = CharTokeniser()
     torch.manual_seed(args.seed)

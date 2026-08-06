@@ -21,7 +21,7 @@ from pathlib import Path
 
 import torch
 
-from adze.config import leaf_pool, load_config
+from adze.config import load_config, trace_kwargs
 from adze.data.dataset import LatentCache
 from adze.data.generate import generate_dataset
 from adze.data.tokeniser import CharTokeniser
@@ -46,7 +46,7 @@ def main() -> None:
 
     config = load_config(args.config)
 
-    leaves = leaf_pool(config)
+    tkw = trace_kwargs(config)
     device = torch.device(config.device)
     tokeniser = CharTokeniser()
     vae, _ = load_vae(args.vae, device)
@@ -75,14 +75,12 @@ def main() -> None:
     # ---- ceiling, per bin ----------------------------------------------------
     train_traces = generate_dataset(
         n=60_000, seed=config.data.seed,
-        max_depth=config.data.max_depth, operand_max=config.data.operand_max,
-        leaf_values=leaves,
+        **tkw,
     )
     train_texts = {s.render() for t in train_traces for s in t.steps}
     held_traces = generate_dataset(
         n=8_000, seed=config.data.seed + 909_091,
-        max_depth=config.data.max_depth, operand_max=config.data.operand_max,
-        leaf_values=leaves,
+        **tkw,
     )
     held_texts = [s.render() for t in held_traces for s in t.steps]
     unseen = [t for t in held_texts if t not in train_texts]

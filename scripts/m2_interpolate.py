@@ -30,7 +30,7 @@ from pathlib import Path
 
 import torch
 
-from adze.config import leaf_pool, load_config
+from adze.config import load_config, trace_kwargs
 from adze.data.generate import generate_dataset
 from adze.data.tokeniser import MAX_STEP_LEN, CharTokeniser
 from adze.model.vae import build_vae
@@ -59,7 +59,7 @@ def main() -> None:
 
     config = load_config(args.config)
 
-    leaves = leaf_pool(config)
+    tkw = trace_kwargs(config)
     device = torch.device(config.device)
     tokeniser = CharTokeniser()
     torch.manual_seed(args.seed)
@@ -87,9 +87,7 @@ def main() -> None:
     traces = generate_dataset(
         n=args.pairs * 2,
         seed=config.data.seed + 555_557,
-        max_depth=config.data.max_depth,
-        operand_max=config.data.operand_max,
-        leaf_values=leaves,
+        **tkw,
     )
     texts = [s.render() for t in traces for s in t.steps][: args.pairs * 2]
     tokens = tokeniser.encode_batch(texts).to(device)

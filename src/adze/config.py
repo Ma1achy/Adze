@@ -27,6 +27,12 @@ class DataConfig:
     # operand_max does not fix this for any value.
     leaf_distribution: str = "uniform"
     leaf_iterations: int = 5
+    # Ceiling on |result|, enforced when the operator is chosen. It sets the
+    # CHARACTER of the task, not just its range: the leaf fixed point converges
+    # against it, so cap 1000 produced three-digit arithmetic the denoiser could
+    # not do at all (0.8% truth against a 96.6% ceiling), while cap 100 keeps
+    # operands and results two-digit.
+    magnitude_cap: int = 1_000
 
 
 @dataclass(frozen=True)
@@ -87,6 +93,22 @@ def load_config(path: Path) -> Config:
     )
 
 
+def trace_kwargs(config: "Config") -> dict:
+    """Every argument `generate_dataset` needs to reproduce this config's data.
+
+    One place. Threading max_depth / operand_max / leaf_values / magnitude_cap
+    separately through seven call sites is how a script ends up generating traces
+    that disagree with the latent cache sitting beside it — the failure would be
+    silent and would look like a model problem.
+    """
+    return {
+        "max_depth": config.data.max_depth,
+        "operand_max": config.data.operand_max,
+        "leaf_values": leaf_pool(config),
+        "magnitude_cap": config.data.magnitude_cap,
+    }
+
+
 def leaf_pool(config: "Config") -> tuple[int, ...] | None:
     """The leaf-operand pool this config's data is built from.
 
@@ -101,4 +123,5 @@ def leaf_pool(config: "Config") -> tuple[int, ...] | None:
         config.data.seed,
         config.data.max_depth,
         config.data.operand_max,
+        config.data.magnitude_cap,
     )

@@ -46,10 +46,12 @@ def main() -> None:
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--max-depth", type=int, default=3)
     p.add_argument("--operand-max", type=int, default=20)
+    p.add_argument("--magnitude-cap", type=int, default=1000)
     args = p.parse_args()
 
     print(BINS_DOC)
     print(f"iterating   {args.iterations} rounds x {args.n} traces, seed {args.seed}")
+    print(f"cap         magnitude_cap = {args.magnitude_cap}")
     print("  iteration 0 is the ORIGINAL uniform sampler. The fixed point is reached")
     print("  when the LEAF row and the RESULT row of an iteration agree.")
     print()
@@ -79,7 +81,7 @@ def main() -> None:
     leaves = fixed_point_leaves(
         iterations=args.iterations, n=args.n, seed=args.seed,
         max_depth=args.max_depth, operand_max=args.operand_max,
-        on_iteration=report,
+        magnitude_cap=args.magnitude_cap, on_iteration=report,
     )
 
     print("=" * 74)

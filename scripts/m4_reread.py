@@ -64,13 +64,15 @@ def main() -> None:
     train_texts = {
         s.render() for t in generate_dataset(
             n=60_000, seed=config.data.seed, max_depth=config.data.max_depth,
-            operand_max=config.data.operand_max, leaf_values=None) for s in t.steps
+            operand_max=config.data.operand_max, leaf_values=None,
+            magnitude_cap=1000) for s in t.steps
     }
     held = [
         s.render() for t in generate_dataset(
             n=8_000, seed=config.data.seed + 909_091,
             max_depth=config.data.max_depth,
-            operand_max=config.data.operand_max, leaf_values=None) for s in t.steps
+            operand_max=config.data.operand_max, leaf_values=None,
+            magnitude_cap=1000) for s in t.steps
     ]
     ceiling = unseen_ceiling_by_magnitude(vae, tokeniser, train_texts, held)
     real_unseen = [t for t in held if t not in train_texts]

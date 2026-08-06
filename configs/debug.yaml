@@ -1,6 +1,6 @@
 # Fast-iteration config. Must overfit 8 examples to near-zero loss in under a minute.
 # Keep this working at every milestone.
-name: matched
+name: cap100
 
 data:
   n_train: 100
@@ -17,7 +17,14 @@ data:
   # point of the result distribution (converged at iteration 4, TV 0.0035).
   # `name` changed with it so the new artefacts do not overwrite the old ones.
   leaf_distribution: empirical
-  leaf_iterations: 5
+  leaf_iterations: 6
+  # Cap 1000 made the fixed point converge onto THREE-digit arithmetic, which the
+  # denoiser could not do at all: 0.8% truth against a 96.6% ceiling, flat in nfe
+  # from 8 to 300. Cap 100 keeps the same self-consistency and lands two-digit.
+  # Arithmetic difficulty is a nuisance variable here — the central experiment
+  # tests global-vs-causal repair, not arithmetic ability — so it is set to where
+  # the signal is measurable, deliberately.
+  magnitude_cap: 100
 
 model:
   latents_per_block: 4        # K
