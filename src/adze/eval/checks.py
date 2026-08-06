@@ -102,6 +102,55 @@ def latent_use_check(
     }
 
 
+@torch.no_grad()
+def unseen_decode_ceiling(
+    vae: torch.nn.Module,
+    tokeniser,
+    train_texts: set[str],
+    held_texts: list[str],
+) -> dict[str, float]:
+    """The ceiling a GENERATED step can realistically hit.
+
+    Decoding real cached latents gives ~97.5% truth, but that mostly measures
+    reconstruction of steps the VAE has memorised — the overwhelming majority of
+    held-out steps also appear verbatim in training, because the space of short
+    arithmetic statements is small. Anything the model invents is by construction
+    novel, so the number to read generated output against is the decode rate on
+    steps the VAE has never seen.
+
+    Returns:
+        {"seen_share", "unseen_true", "unseen_formed", "seen_true", "n_unseen"}
+
+    `unseen_true` is the ceiling. `seen_true` is reported beside it so the size of
+    the memorisation effect is visible rather than asserted.
+    """
+    from adze.sample.trajectory import rates
+
+    device = next(vae.parameters()).device
+    unseen = [t for t in held_texts if t not in train_texts]
+    seen = [t for t in held_texts if t in train_texts]
+
+    def decode_rate(texts: list[str]) -> tuple[float, float]:
+        if not texts:
+            return float("nan"), float("nan")
+        out: list[str] = []
+        for i in range(0, len(texts), 4096):
+            chunk = tokeniser.encode_batch(texts[i : i + 4096]).to(device)
+            mu, _ = vae.encoder(chunk)
+            out += [tokeniser.decode(r) for r in vae.decoder(mu).argmax(dim=-1)]
+        return rates(out)
+
+    unseen_formed, unseen_true = decode_rate(unseen)
+    _, seen_true = decode_rate(seen)
+    return {
+        "seen_share": len(seen) / max(len(held_texts), 1),
+        "unseen_formed": unseen_formed,
+        "unseen_true": unseen_true,
+        "seen_true": seen_true,
+        "n_unseen": len(unseen),
+    }
+
+
 def _overfit_vectorised(
     model, batch, steps, lr, t_shift, threshold,
     make_batch, loss_fn, MaskMode, masked_mean, real_positions,
