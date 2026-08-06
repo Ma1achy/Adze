@@ -25,8 +25,17 @@ from adze.sample.trajectory import TrajectoryRecorder
 # Default stochasticity. SDE sampling is PROMOTED out of design §8 — see
 # adze.sample.stochastic for the evidence. This default is a real choice about
 # what the sampler does, so it is stated here rather than left implicit at every
-# call site, and eta = 0 recovers the ODE the earlier results were measured under.
-DEFAULT_ETA = 0.0
+# call site.
+#
+# 1.0 is the measured optimum, not a boundary picked by default: the eta x S_churn
+# grid (scripts/m4_churn.py) found eta = 1, S_churn = 0 best on both the
+# block-conditional model (45.9%) and the unconditional one (70.7%), with churn
+# HARMING both at eta = 1. Truth does not climb past this edge of the
+# parameterisation.
+#
+# NOTE FOR READING OLD RESULTS: every M4 number recorded before this default
+# changed was measured at eta = 0. Pass eta=0.0 explicitly to reproduce them.
+DEFAULT_ETA = 1.0
 
 
 @torch.no_grad()
