@@ -262,13 +262,34 @@ Partial re-noising then becomes a measured change, not a starting assumption. If
 
 **Deferred as measured changes, not v0 defaults:**
 - **x-prediction.** ELF's finding that v-prediction breaks was specific to sharing weights with a *discretisation* step. Here the sharing is between two denoising regimes, with a separate VAE decoder — so the finding doesn't obviously transfer. LaDiR uses velocity. Start there, measure x-prediction as a change.
-- **SDE sampler.** Better in few-step regimes elsewhere; unvalidated here. ODE first.
+- ~~**SDE sampler.**~~ **PROMOTED — see below.** It was deferred as "unvalidated here", it was validated, and it is now the default.
+
+**SDE sampler — PROMOTED into v0 (M4).** This was deferred pending measurement, measured as a probe deliberately kept out of `draft`, and promoted on the result. Predict-then-renoise with one knob:
+
+```
+z0_hat = z_t - t*v                 eps_hat = z_t + (1-t)*v
+z_s    = (1-s)*z0_hat + s*( sqrt(1-eta^2)*eps_hat + eta*fresh )
+```
+
+At `eta = 0` this collapses algebraically to `z_t - (t-s)*v`, the Euler step, so the promotion cannot silently change the deterministic path — `tests/test_m4_stochastic.py` holds the reduction permanently and the identity is measured at `max|diff| = 0` on a full draft.
+
+**Evidence.** Unconditional truth 38.6% → 70.7%, 95% of the measured 74.5% unseen-step ceiling. Block-conditional 30.0% → 46.3% (three seeds, ±0.6). `DEFAULT_ETA = 1.0` in `adze.sample.draft`.
+
+**Why it works here specifically:** the deterministic ODE is a bijection, so hitting a strongly multimodal target needs a very contorted map. The measured latent clustering (NN / mean pairwise distance 0.280 against a 0.744 Gaussian null) says the target is exactly that shape.
+
+**And eta = 1 is a measured optimum, not the edge we ran into.** EDM-style churn (Karras et al. 2022, S_churn, mapped from VE sigma to rectified-flow t by `sigma = t/(1-t)`) pushes past `eta = 1` and truth does *not* follow: churn helps at `eta = 0` (+6.8pp) and `eta = 0.5`, and **harms** at `eta = 1` (−2.0pp block-conditional, −3.4pp unconditional). That is exactly what the mechanism predicts — churn corrects *accumulated* ODE error, and at `eta = 1` nothing accumulates. Churn stays implemented (`s_churn` on `draft`) and defaults off.
+
+**Stage 2 (rollout adaptation) — PROMOTED, implement after M5.** The measurement: conditioning on a *generated* prefix is worse than conditioning on *nothing* (45.9% vs 53.9% at `eta = 1`), and the penalty *widens* as the sampler improves (5.0pp → 8.0pp). It was staged and deferred, not omitted; this is the measurement showing it is not optional. It needs a model whose rollouts are worth adapting to, so it lands after M5, not before.
+
+  **Caveat recorded with the promotion.** The same-model arm says the mechanism may not be exposure bias: handing the model the *correct* prefix instead of its own buys only ~3pp in the mid magnitude bins and nothing in the small ones, with near-identical magnitude histograms. `correct ≈ generated` means the prefix carries little usable signal — and rollout adaptation makes a model robust to its own imperfect prefixes rather than making an uninformative prefix informative. Re-read this before implementing.
+
+**Latent jitter — NOT promoted, negative result recorded.** The same multimodality hypothesis was attacked from the data side (training on jittered latents, σ = 0.30 chosen by a stated validity rule) and the sampler side. The sampler side won decisively; jitter **hurt**, 29.3% against 38.6%.
 
 ### 3.2 Other decisions
 
 | Decision | Why |
 |---|---|
-| **Velocity prediction, ODE sampler** | v0 baseline — see §3.1. x-prediction and SDE are measured changes, not starting assumptions. |
+| **Velocity prediction, SDE sampler** | Velocity is the v0 baseline; x-prediction remains a measured change. The **SDE sampler was promoted at M4** (§3.1) after measuring 38.6% → 70.7% unconditional truth — it is no longer a deferred change. |
 | **Contextual encoder representations as the diffusion target** | From-scratch learnable embeddings were the *worst* variant in ELF's ablation. Joint optimisation of embeddings and denoiser is hard. |
 | **Rollout conditioning — deferred** | Replace oracle contexts with cached or live pass-one outputs during stage-two adaptation (§3.1). **Not in v0**, which trains on clean data only. The trick has been the right answer three times in this design; it's postponed, not dismissed. |
 | **Self-conditioning** | Small change, disproportionate quality gain. |
@@ -343,7 +364,8 @@ Design is closed. If a first implementation started today:
 - pass two by **complete erasure** (`t = 1`), grid over ρ alone
 - velocity prediction, ODE sampler
 - programmatically generated arithmetic before natural GSM8K
-- **no** rollout adaptation, semantic-correction objective, partial re-noising, termination head, learned segmentation, or adaptive compute
+- **no** semantic-correction objective, partial re-noising, termination head, learned segmentation, or adaptive compute
+- rollout adaptation was on this list and is now **promoted to post-M5** (§3.1) on the measured prefix result
 
 Everything beyond this list is §8. Further conceptual refinement will produce less value than the first reconstruction curve and trajectory printout.
 

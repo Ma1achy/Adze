@@ -69,14 +69,21 @@ z_{t-dt} = z_t - dt * u_theta(z_t, t, ctx)      # integrate t: 1 -> 0
 - learned block segmentation
 - partial re-noising (`t < 1` in pass two)
 - uncertainty-based block selection
-- rollout adaptation, semantic-correction objective
+- semantic-correction objective
 - looped refinement, adaptive compute
 - byte-level input, learned input tokenisation
 - distillation, RL
-- x-prediction, SDE sampler
+- x-prediction
 - KV caching (not until after M7, and only against a verified uncached baseline)
 
 These are all in design §8 as deliberate future work. They are excluded on purpose, not forgotten.
+
+**Promoted off this list at M4 — do not re-add them:**
+
+- **SDE sampler.** `DEFAULT_ETA = 1.0` in `adze.sample.draft`. Promoted on 38.6% → 70.7% unconditional truth (95% of the 74.5% ceiling), with `eta = 0` reducing to the Euler step algebraically and `tests/test_m4_stochastic.py` holding that permanently. EDM churn is implemented alongside it and defaults **off** — it helps at `eta = 0` and harms at `eta = 1`, so `eta = 1, S_churn = 0` is a measured optimum.
+- **Rollout adaptation (stage 2).** Promoted to **post-M5**, not to now. A generated prefix is worse than no prefix (45.9% vs 53.9%) and the gap widens as the sampler improves. Read the caveat in design §3.1 before implementing: the same-model arm suggests the prefix is uninformative rather than that the model is derailed by its own errors, and those want different fixes.
+
+**Every M4 number recorded before the promotion was measured at `eta = 0`.** Pass `eta=0.0` explicitly to reproduce them; the historical diagnostic scripts pin it.
 
 ## Environment
 
@@ -112,6 +119,14 @@ algorithm scores one block per step and needs ~30k gate steps to cross the 2%
 threshold; vectorised crosses it in 6k and lands lower (0.8% vs 1.14%). Budget
 accordingly: a 6k naive run is under-converged, and several M4 diagnostics taken
 on one turned out to be measuring undertraining rather than the thing they named.
+
+**A pooled rate is not a rate unless the two sides are distribution-matched.**
+The model's generated steps land in the 10-29 operand bin 51% of the time; real
+steps do so 4.5% of the time. So a pooled truth figure is partly a measure of
+which problems the model *chose*. Reweighting the per-bin rates by the data's
+magnitude shares turns 46.3% into ~10.4%. The 74.5% ceiling is weighted by the
+real distribution, so pooled-truth-against-ceiling was never apples to apples.
+Report per-bin, or report the reweighted number, or say which one it is.
 
 **Any number that gates a decision gets reported with its budget and its spread.**
 An M3 gate figure of 1.20% was reported as a single draw without its step count;
