@@ -32,11 +32,13 @@ from pathlib import Path
 
 import torch
 
-from adze.config import load_config
+from adze.config import leaf_pool, load_config
 from adze.data.dataset import LatentCache
+from adze.data.generate import generate_dataset
 from adze.data.tokeniser import CharTokeniser
+from adze.eval.checks import unseen_ceiling_by_magnitude
 from adze.eval.load import load_denoiser, load_vae
-from adze.eval.magnitude import print_magnitude_table
+from adze.eval.readout import print_readout, readout
 from adze.sample.draft import draft
 from adze.sample.trajectory import noise_floor, rates
 
@@ -44,10 +46,9 @@ CACHE_DIR = Path("data/cache")
 
 ETAS = [0.0, 0.5, 0.75, 1.0]
 
-# Measured last night: 87.1% of held-out steps appear verbatim in training, and the
-# D=16 VAE decodes the genuinely unseen ones at 74.5%. Anything generated is novel,
-# so this is the bar, not the ~97.5% round-trip figure on cached latents.
-CEILING = 0.745
+# The ceiling is MEASURED per magnitude bin against the VAE in hand, not carried
+# over as a constant. The old pooled 74.5% was specific to the old data
+# distribution and to the old VAE, and both changed.
 
 
 @torch.no_grad()
@@ -79,9 +80,26 @@ def main() -> None:
     args = p.parse_args()
 
     config = load_config(args.config)
+    leaves = leaf_pool(config)
     device = torch.device(config.device)
     tokeniser = CharTokeniser()
     vae, _ = load_vae(args.vae, device)
+
+    # Reference distribution and per-bin ceiling, both from the SAME held-out
+    # traces, so the weights and the bar cannot disagree with each other.
+    train_texts = {
+        s.render() for t in generate_dataset(
+            n=60_000, seed=config.data.seed, max_depth=config.data.max_depth,
+            operand_max=config.data.operand_max, leaf_values=leaves) for s in t.steps
+    }
+    held_texts = [
+        s.render() for t in generate_dataset(
+            n=8_000, seed=config.data.seed + 909_091,
+            max_depth=config.data.max_depth,
+            operand_max=config.data.operand_max, leaf_values=leaves) for s in t.steps
+    ]
+    ceiling = unseen_ceiling_by_magnitude(vae, tokeniser, train_texts, held_texts)
+    real_unseen = [t for t in held_texts if t not in train_texts]
 
     models = []
     for path in args.checkpoints:
@@ -109,7 +127,8 @@ def main() -> None:
     print(f"sampling      B={blocks} nfe={args.nfe} eta {ETAS}, "
           f"{args.samples} traces per cell")
     print(f"floor         {floor:.1%} well-formed, {floor_true:.1%} true")
-    print(f"ceiling       {CEILING:.1%} true on UNSEEN steps")
+    print(f"reference     {len(real_unseen)} unseen held-out steps set the "
+          f"magnitude weights and the per-bin ceiling")
     print()
 
     # eta -> per seed (formed, true); eta -> per seed per block true
@@ -150,13 +169,24 @@ def main() -> None:
     print("=" * 78)
     print(f"AGGREGATE — mean over {len(models)} seeds, half-range as spread")
     print("=" * 78)
-    print(f"  {'eta':>5} {'well-formed':>18} {'true':>18} {'% of ceiling':>14}")
+    print("  MATCHED is the headline: per-bin truth reweighted to the real")
+    print("  magnitude distribution. RAW is the pre-session-12 pooled convention,")
+    print("  kept so older numbers stay comparable — it is inflated whenever the")
+    print("  model picks its own difficulty.")
+    print()
+    matched_by_eta = {
+        eta: readout(texts_by_eta[eta], real_unseen, ceiling) for eta in ETAS
+    }
+    print(f"  {'eta':>5} {'raw well-formed':>18} {'RAW true':>18} "
+          f"{'MATCHED true':>14} {'% matched ceiling':>18}")
     for eta in ETAS:
         formed = [f for f, _ in agg[eta]]
         true = [t for _, t in agg[eta]]
-        mean_true = sum(true) / len(true)
+        r = matched_by_eta[eta]
+        mc = r.matched_ceiling
+        pct = f"{r.matched_true / mc:>17.0%}" if mc else f"{'—':>18}"
         print(f"  {eta:>5.2f} {spread(formed):>18} {spread(true):>18} "
-              f"{mean_true / CEILING:>13.0%}")
+              f"{r.matched_true:>14.1%} {pct}")
 
     print()
     print("=" * 78)
@@ -186,7 +216,8 @@ def main() -> None:
     print("  sampler too.")
     print()
     for eta in ETAS:
-        print_magnitude_table(texts_by_eta[eta], f"eta = {eta:.2f}  (all seeds pooled)")
+        print_readout(matched_by_eta[eta],
+                      f"eta = {eta:.2f}  —  all seeds pooled, {len(models)} seeds")
 
 
 if __name__ == "__main__":

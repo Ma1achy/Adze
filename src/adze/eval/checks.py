@@ -103,6 +103,47 @@ def latent_use_check(
 
 
 @torch.no_grad()
+def unseen_ceiling_by_magnitude(
+    vae: torch.nn.Module,
+    tokeniser,
+    train_texts: set[str],
+    held_texts: list[str],
+) -> dict[str, float]:
+    """The unseen-step decode ceiling, per operand-magnitude bin.
+
+    The pooled ceiling stopped being fine enough the moment generated small-operand
+    bins started clearing it — that is not a contradiction, it is the pooled number
+    being an average over bins the decoder handles very differently (measured on the
+    old data: 94.6% at 10-29 against 58.6% at 300+). A generated step has to be read
+    against the ceiling for ITS bin.
+
+    Binned on the SOURCE step's operands, not the decode's: the decode may be
+    malformed, and the question is what the decoder does to inputs of a given
+    magnitude.
+
+    Returns:
+        {bin name: truth share} over held-out steps absent from `train_texts`.
+    """
+    from adze.eval.magnitude import BINS, magnitude
+    from adze.sample.trajectory import rates
+
+    device = next(vae.parameters()).device
+    unseen = [t for t in held_texts if t not in train_texts]
+    out: list[str] = []
+    for i in range(0, len(unseen), 4096):
+        chunk = tokeniser.encode_batch(unseen[i : i + 4096]).to(device)
+        mu, _ = vae.encoder(chunk)
+        out += [tokeniser.decode(r) for r in vae.decoder(mu).argmax(dim=-1)]
+
+    ceiling: dict[str, float] = {}
+    for lo, hi, name in BINS:
+        decoded = [d for source, d in zip(unseen, out)
+                   if (m := magnitude(source)) is not None and lo <= m <= hi]
+        if decoded:
+            ceiling[name] = rates(decoded)[1]
+    return ceiling
+
+
 def unseen_decode_ceiling(
     vae: torch.nn.Module,
     tokeniser,
