@@ -1,6 +1,6 @@
 # Fast-iteration config. Must overfit 8 examples to near-zero loss in under a minute.
 # Keep this working at every milestone.
-name: debug
+name: matched
 
 data:
   n_train: 100
@@ -9,6 +9,15 @@ data:
   operand_max: 20
   blocks_per_sequence: 7      # B — covers all depth-3 traces, drops nothing
   seed: 0
+  # THE DATA FIX (session 12). Leaves were uniform on 1..operand_max while results
+  # reach MAGNITUDE_CAP = 1000, so the model met small values as inputs and large
+  # values only as outputs — a 6x truth cliff at magnitude ~30 against a decoder
+  # that round-trips that range at 87%. Raising operand_max fixes it for no value;
+  # the cap simply starts binding instead. "empirical" draws leaves from the fixed
+  # point of the result distribution (converged at iteration 4, TV 0.0035).
+  # `name` changed with it so the new artefacts do not overwrite the old ones.
+  leaf_distribution: empirical
+  leaf_iterations: 5
 
 model:
   latents_per_block: 4        # K

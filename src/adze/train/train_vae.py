@@ -19,7 +19,7 @@ from pathlib import Path
 
 import torch
 
-from adze.config import Config, load_config
+from adze.config import Config, leaf_pool, load_config
 from adze.data.corrupt import make_pair
 from adze.data.dataset import LatentCache, TraceDataset
 from adze.data.generate import Trace, generate_dataset
@@ -40,17 +40,20 @@ def _split(
     config: Config, n_train: int | None = None, n_val: int | None = None
 ) -> tuple[list[Trace], list[Trace]]:
     """Train and held-out traces from disjoint seeds."""
+    leaves = leaf_pool(config)
     train = generate_dataset(
         n=n_train if n_train is not None else config.data.n_train,
         seed=config.data.seed,
         max_depth=config.data.max_depth,
         operand_max=config.data.operand_max,
+        leaf_values=leaves,
     )
     val = generate_dataset(
         n=n_val if n_val is not None else config.data.n_val,
         seed=config.data.seed + 999_983,
         max_depth=config.data.max_depth,
         operand_max=config.data.operand_max,
+        leaf_values=leaves,
     )
     return train, val
 

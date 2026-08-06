@@ -15,7 +15,7 @@ from pathlib import Path
 
 import torch
 
-from adze.config import load_config
+from adze.config import leaf_pool, load_config
 from adze.data.corrupt import make_pair
 from adze.data.dataset import LatentCache, TraceDataset
 from adze.data.generate import generate_dataset
@@ -32,6 +32,8 @@ def main() -> None:
     args = p.parse_args()
 
     config = load_config(args.config)
+
+    leaves = leaf_pool(config)
     device = torch.device(config.device)
 
     state = torch.load(args.checkpoint, map_location=device, weights_only=False)
@@ -45,6 +47,7 @@ def main() -> None:
         seed=config.data.seed,
         max_depth=config.data.max_depth,
         operand_max=config.data.operand_max,
+        leaf_values=leaves,
     )
     pairs = [make_pair(t, rng_seed=i) for i, t in enumerate(traces) if len(t.steps) >= 2]
     dataset = TraceDataset(

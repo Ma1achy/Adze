@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import random
 from collections.abc import Callable
+from functools import lru_cache
 from dataclasses import dataclass
 
 OPS: dict[str, Callable[[int, int], int]] = {
@@ -49,6 +50,14 @@ BRANCH_P = 0.6
 
 # Traces shorter than the floor are discarded and regenerated, not patched.
 MAX_BUILD_ATTEMPTS = 100
+
+# One line, so the reporting scripts and the docstrings cannot disagree about what
+# the leaf-distribution change is for.
+BINS_DOC = (
+    "leaf operands are drawn from the empirical distribution of RESULTS, iterated\n"
+    "to a fixed point, so the model never meets a magnitude as an input that it has\n"
+    "not also seen as an output (and vice versa)."
+)
 
 
 @dataclass(frozen=True)
@@ -119,7 +128,26 @@ class _Node:
     right: "_Node | int"
 
 
-def _build(rng: random.Random, depth: int, operand_max: int) -> tuple[_Node, int]:
+def _leaf(rng: random.Random, operand_max: int,
+          leaf_values: tuple[int, ...] | None) -> int:
+    """Draw one literal leaf operand.
+
+    `leaf_values` None reproduces the original sampler: uniform on 1..operand_max.
+    Given a pool, the draw is uniform over that pool, which IS sampling from the
+    empirical distribution the pool was collected from.
+
+    This is the whole of the leaf-distribution change. The builder's structure is
+    untouched: the leaf is drawn BEFORE the operator is chosen, exactly as before,
+    so the construct-time-only rule still holds — nothing is rewritten after a
+    node is emitted.
+    """
+    if leaf_values is None:
+        return rng.randint(1, operand_max)
+    return rng.choice(leaf_values)
+
+
+def _build(rng: random.Random, depth: int, operand_max: int,
+           leaf_values: tuple[int, ...] | None = None) -> tuple[_Node, int]:
     """Build one expression-tree node bottom-up, returning it and its value.
 
     Construction is post-order, so the children's actual values are known by the
@@ -132,30 +160,34 @@ def _build(rng: random.Random, depth: int, operand_max: int) -> tuple[_Node, int
     no result is clamped, no fallback fires. The cap shapes the choice rather than
     correcting its outcome.
 
-    Every child value is bounded by max(operand_max, MAGNITUDE_CAP), so whichever
+    Every child value is bounded by max(leaf bound, MAGNITUDE_CAP), so whichever
     of `+`/`-` yields ||lhs| - |rhs|| is always within the cap and the candidate
     set is never empty. The guard below is a bug check, not a fallback path.
+
+    `leaf_values`, when given, replaces the uniform 1..operand_max leaf draw with a
+    draw from an empirical pool — see `_leaf` and `fixed_point_leaves`.
     """
     branch_left = depth > 1 and rng.random() < BRANCH_P
     branch_right = depth > 1 and rng.random() < BRANCH_P
 
     if branch_left:
-        left, lhs = _build(rng, depth - 1, operand_max)
+        left, lhs = _build(rng, depth - 1, operand_max, leaf_values)
     else:
-        lhs = rng.randint(1, operand_max)
+        lhs = _leaf(rng, operand_max, leaf_values)
         left = lhs
 
     if branch_right:
-        right, rhs = _build(rng, depth - 1, operand_max)
+        right, rhs = _build(rng, depth - 1, operand_max, leaf_values)
     else:
-        rhs = rng.randint(1, operand_max)
+        rhs = _leaf(rng, operand_max, leaf_values)
         right = rhs
 
     allowed = [op for op, f in OPS.items() if abs(f(lhs, rhs)) <= MAGNITUDE_CAP]
     if not allowed:
         raise RuntimeError(
             f"no operator keeps {lhs} ? {rhs} within {MAGNITUDE_CAP}; "
-            f"operand_max={operand_max} is too large for the cap"
+            f"leaf pool reaches {max(leaf_values) if leaf_values else operand_max}, "
+            f"too large for the cap"
         )
 
     op = rng.choice(allowed)
@@ -189,13 +221,17 @@ def generate_trace(
     max_depth: int = 3,
     operand_max: int = 100,
     min_steps: int = 3,
+    leaf_values: tuple[int, ...] | None = None,
 ) -> Trace:
     """Generate one valid trace from a random expression tree.
 
     Args:
         rng_seed: seed for this specific trace, so generation is reproducible.
         max_depth: expression tree depth; controls step count.
-        operand_max: upper bound on leaf operands.
+        operand_max: upper bound on leaf operands. Ignored when `leaf_values` is
+            given.
+        leaf_values: pool to draw literal leaves from, replacing the uniform
+            1..operand_max draw. See `fixed_point_leaves` for why this exists.
         min_steps: floor on step count. A trace with too few steps is useless for
             the central experiment — with the final step excluded from corruption,
             there must still be later steps to carry the repair evidence. Clamped
@@ -216,7 +252,7 @@ def generate_trace(
     rng = random.Random(rng_seed)
 
     for _ in range(MAX_BUILD_ATTEMPTS):
-        root, _value = _build(rng, max_depth, operand_max)
+        root, _value = _build(rng, max_depth, operand_max, leaf_values)
         steps: list[Step] = []
         answer, _ = _emit(root, steps)
         if len(steps) >= floor:
@@ -236,6 +272,7 @@ def generate_dataset(
     max_depth: int = 3,
     operand_max: int = 100,
     min_steps: int = 3,
+    leaf_values: tuple[int, ...] | None = None,
 ) -> list[Trace]:
     """Generate `n` traces. Reproducible given `seed`."""
     return [
@@ -244,6 +281,90 @@ def generate_dataset(
             max_depth=max_depth,
             operand_max=operand_max,
             min_steps=min_steps,
+            leaf_values=leaf_values,
         )
         for i in range(n)
     ]
+
+
+def result_magnitudes(traces: list[Trace]) -> tuple[int, ...]:
+    """|result| of every step across `traces`, in order. The empirical pool.
+
+    Magnitudes, not signed values: leaves have always been positive and the change
+    under test is about the RANGE the model meets, not about introducing negative
+    literals. Zeros are kept — they occur in the results and excluding them would
+    be exactly the kind of quiet filtering this repo forbids elsewhere.
+    """
+    return tuple(abs(step.result) for trace in traces for step in trace.steps)
+
+
+def fixed_point_leaves(
+    iterations: int = 3,
+    n: int = 20_000,
+    seed: int = 0,
+    max_depth: int = 3,
+    operand_max: int = 20,
+    on_iteration=None,
+) -> tuple[int, ...]:
+    """Iterate the leaf distribution to a fixed point against its own results.
+
+    THE DEFECT THIS FIXES. Leaves were drawn uniform on 1..20 while results reach
+    MAGNITUDE_CAP = 1000, so the model met small values as *inputs* and large
+    values only as *outputs*. Measured consequence: arithmetic truth 72% on
+    10-29 operands and 12% on 30-99, against a decoder that round-trips the latter
+    at 87%.
+
+    Raising `operand_max` does not fix it for ANY value — raise it and the cap
+    starts binding on nearly every operation instead, which just moves the mismatch.
+    The self-consistent version is to draw leaves from the empirical distribution of
+    RESULTS, iterated until input and output distributions agree. Then they match by
+    construction rather than by tuning.
+
+    Deterministic given `seed`, so callers recompute rather than storing an artifact
+    that can drift out of sync with the code that made it.
+
+    Args:
+        on_iteration: optional callback (i, leaf_pool, result_pool) for reporting
+            convergence. The caller prints; this function does not.
+
+    Returns:
+        The leaf pool after `iterations` rounds. Iteration 0 is the uniform sampler.
+    """
+    leaves: tuple[int, ...] | None = None
+    for i in range(iterations + 1):
+        traces = generate_dataset(
+            n=n, seed=seed + i, max_depth=max_depth,
+            operand_max=operand_max, leaf_values=leaves,
+        )
+        results = result_magnitudes(traces)
+        if on_iteration is not None:
+            on_iteration(i, leaves, results)
+        if i < iterations:
+            leaves = results
+    return leaves if leaves is not None else tuple(range(1, operand_max + 1))
+
+
+@lru_cache(maxsize=8)
+def configured_leaves(
+    distribution: str,
+    iterations: int,
+    seed: int,
+    max_depth: int,
+    operand_max: int,
+) -> tuple[int, ...] | None:
+    """The leaf pool a config asks for. Cached — the fixed point costs ~40s.
+
+    "uniform" is the original sampler and returns None. "empirical" runs
+    `fixed_point_leaves`, which is deterministic in `seed`, so every caller in a
+    run gets the identical pool without an artifact file to drift out of sync.
+    """
+    if distribution == "uniform":
+        return None
+    if distribution != "empirical":
+        raise ValueError(
+            f"leaf_distribution must be 'uniform' or 'empirical', got {distribution!r}"
+        )
+    return fixed_point_leaves(
+        iterations=iterations, n=20_000, seed=seed,
+        max_depth=max_depth, operand_max=operand_max,
+    )

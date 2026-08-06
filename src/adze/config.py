@@ -20,6 +20,13 @@ class DataConfig:
     operand_max: int
     blocks_per_sequence: int    # B
     seed: int
+    # Leaf-operand distribution. "uniform" draws 1..operand_max, the original
+    # sampler; "empirical" draws from the fixed point of the RESULT distribution,
+    # so the model never meets a magnitude as an input it has not seen as an
+    # output. See adze.data.generate.fixed_point_leaves for why raising
+    # operand_max does not fix this for any value.
+    leaf_distribution: str = "uniform"
+    leaf_iterations: int = 5
 
 
 @dataclass(frozen=True)
@@ -77,4 +84,21 @@ def load_config(path: Path) -> Config:
         train=TrainConfig(**raw["train"]),
         sample=SampleConfig(**raw["sample"]),
         device=raw["device"],
+    )
+
+
+def leaf_pool(config: "Config") -> tuple[int, ...] | None:
+    """The leaf-operand pool this config's data is built from.
+
+    One place, so a script that regenerates traces cannot silently disagree with
+    the one that built the latent cache. Returns None for the uniform sampler.
+    """
+    from adze.data.generate import configured_leaves
+
+    return configured_leaves(
+        config.data.leaf_distribution,
+        config.data.leaf_iterations,
+        config.data.seed,
+        config.data.max_depth,
+        config.data.operand_max,
     )
