@@ -132,6 +132,7 @@ def vectorised_regime_a_batch(
     t_shift: float | None = 1.5,
     t: torch.Tensor | None = None,
     eps: torch.Tensor | None = None,
+    zero_prefix: bool = False,
 ) -> dict[str, torch.Tensor]:
     """Regime A with EVERY block denoised in one forward pass.
 
@@ -179,7 +180,8 @@ def vectorised_regime_a_batch(
     # the same value `draft` gives already-generated blocks. All three agree.
     t_full = torch.cat([t, torch.zeros(batch, blocks, device=device)], dim=1)
     block_ids_full = torch.cat([block_ids, block_ids + blocks])
-    z_full = torch.cat([z_t, z0], dim=1)
+    clean = torch.zeros_like(z0) if zero_prefix else z0
+    z_full = torch.cat([z_t, clean], dim=1)
 
     mask = vectorised_regime_a_mask(block_ids)
 
@@ -246,6 +248,7 @@ def train_denoiser(
     batch_size: int | None = None,
     lr: float | None = None,
     vectorised: bool = True,
+    zero_prefix: bool = False,
 ) -> dict[str, float]:
     """Args:
         config_path: yaml config.
@@ -265,6 +268,11 @@ def train_denoiser(
             The default, because the naive per-block form starves each position by
             ~110x. False keeps the naive path, retained for the equivalence test
             and for reproducing pre-vectorisation results.
+        zero_prefix: zero the clean prefix blocks instead of letting them carry
+            content. Tests whether the model fits spurious correlations in a
+            prefix that carries only 2-7% of the information about the next block.
+            Threaded into `draft` as well, since a sampler whose prefix differs
+            from training's measures something the model was never taught.
     """
     if mixed:
         raise NotImplementedError("regime B and the 90/10 mix are M6, not M3")
@@ -371,7 +379,7 @@ def train_denoiser(
         if vectorised:
             batch = vectorised_regime_a_batch(
                 latents[idx], block_ids, blocks, block_mask=block_mask[idx],
-                t_shift=t_shift,
+                t_shift=t_shift, zero_prefix=zero_prefix,
             )
             loss = vectorised_regime_a_loss(model, batch)
         else:
@@ -398,6 +406,8 @@ def train_denoiser(
     # overwrite its own earlier runs, and the comparison needs all of them.
     suffix = "" if t_shift == 1.5 else f"_shift{t_shift}"
     suffix += "" if vectorised else "_naive"
+    suffix += "" if seed == 0 else f"_seed{seed}"
+    suffix += "_zeroprefix" if zero_prefix else ""
     ckpt = CHECKPOINT_DIR / f"denoiser_{config.name}_d{latents.shape[-1]}{suffix}.pt"
     torch.save(
         {
@@ -413,6 +423,7 @@ def train_denoiser(
             },
             "latent_scale": cache.scale,
             "t_shift": t_shift,
+            "zero_prefix": zero_prefix,
         },
         ckpt,
     )
@@ -431,13 +442,16 @@ def main() -> None:
     p.add_argument("--t-shift", type=float, default=1.5,
                    help="logit-normal shift; <1 concentrates on small t")
     p.add_argument("--batch", type=int, default=None)
+    p.add_argument("--zero-prefix", action="store_true",
+                   help="zero the clean prefix; control for spurious prefix fitting")
     p.add_argument("--naive", action="store_true",
                    help="use the pre-vectorisation per-block algorithm")
     p.add_argument("--lr", type=float, default=None)
     args = p.parse_args()
     train_denoiser(args.config, steps=args.steps, gate_steps=args.gate_steps,
                    latent_dim=args.latent_dim, seed=args.seed, t_shift=args.t_shift,
-                   batch_size=args.batch, lr=args.lr, vectorised=not args.naive)
+                   batch_size=args.batch, lr=args.lr, vectorised=not args.naive,
+                   zero_prefix=args.zero_prefix)
 
 
 if __name__ == "__main__":

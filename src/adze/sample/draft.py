@@ -36,6 +36,7 @@ def draft(
     shift: float = 1.0,
     mask_for_block: Callable[[torch.Tensor, int], torch.Tensor] = regime_a_mask,
     on_step: Callable[[int, float, int, torch.Tensor], None] | None = None,
+    zero_prefix: bool = False,
 ) -> torch.Tensor:
     """Returns:
         latents: [batch, N, D] the drafted reasoning chain.
@@ -57,6 +58,9 @@ def draft(
             training measures something the model was never taught, and this makes
             the choice visible at the call site instead of buried in a branch.
         recorder: optional TrajectoryRecorder, fed at every step of every block.
+        zero_prefix: zero already-generated blocks instead of conditioning on
+            them. Must match how the model was TRAINED — a sampler whose prefix
+            differs from training's measures something never taught.
         on_step: optional callback (global_step, t, active_block, latents) receiving
             the FULL batch at every step. `recorder` only ever sees sample 0, so a
             variance across the batch cannot be recovered from it; rather than
@@ -97,7 +101,13 @@ def draft(
             t[:, b] = t_active
             t[:, b + 1 :] = 1.0
 
-            velocity = denoiser(latents, t, block_ids, MaskMode.CAUSAL, mask=mask)
+            model_in = latents
+            if zero_prefix:
+                model_in = torch.where(
+                    (block_ids < b).view(1, n_positions, 1),
+                    torch.zeros_like(latents), latents,
+                )
+            velocity = denoiser(model_in, t, block_ids, MaskMode.CAUSAL, mask=mask)
 
             # Integrate the active block only. Applying the step everywhere would
             # walk the finished blocks off their values.
