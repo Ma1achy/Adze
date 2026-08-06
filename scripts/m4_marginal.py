@@ -115,7 +115,8 @@ def main() -> None:
 
     # ---- Generated block latents ---------------------------------------------
     torch.manual_seed(args.seed)
-    gen = draft(denoiser, None, blocks, k, d, args.nfe,
+    # eta=0 pinned: this script's recorded numbers predate the eta=1 default.
+    gen = draft(denoiser, None, blocks, k, d, args.nfe, eta=0.0,
                 device=str(device), batch=args.samples)
     gen_blocks = gen.reshape(-1, k, d)
     gen_flat = gen.reshape(-1, d)
@@ -267,7 +268,7 @@ def main() -> None:
         ))
 
     torch.manual_seed(args.seed)
-    draft(denoiser, None, blocks, k, d, args.nfe,
+    draft(denoiser, None, blocks, k, d, args.nfe, eta=0.0,
           device=str(device), batch=args.samples, on_step=collect)
 
     # Average across blocks at each t: the row is then a property of schedule

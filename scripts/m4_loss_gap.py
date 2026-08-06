@@ -195,7 +195,8 @@ def main() -> None:
 
     # ---- The sampler's own output --------------------------------------------
     torch.manual_seed(args.seed)
-    gen = draft(denoiser, None, blocks, k, d, args.nfe,
+    # eta=0 pinned: this script's recorded numbers predate the eta=1 default.
+    gen = draft(denoiser, None, blocks, k, d, args.nfe, eta=0.0,
                 device=str(device), batch=args.batch)
 
     # A': a real prefix from a different trace. Uninformative but in-distribution.
@@ -265,7 +266,7 @@ def main() -> None:
     for nfe in (args.nfe, 50):
         torch.manual_seed(args.seed)
         rec = TrajectoryRecorder(vae.decoder, tokeniser, k, scale)
-        draft(denoiser, None, blocks, k, d, nfe,
+        draft(denoiser, None, blocks, k, d, nfe, eta=0.0,
               device=str(device), batch=1, recorder=rec)
         # Average over blocks at each t, so the row is a property of the schedule
         # position rather than of whichever block happened to be active.

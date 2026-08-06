@@ -136,7 +136,9 @@ def main() -> None:
         1.5, device, seed=args.seed, jitter=sigma,
     )
     torch.manual_seed(args.seed)
-    gen = draft(jit_model, None, 1, k, d, args.nfe,
+    # eta=0 on both jitter arms: the ablation compares training data, not
+    # samplers, so the sampler must be the one the baseline was measured under.
+    gen = draft(jit_model, None, 1, k, d, args.nfe, eta=0.0,
                 device=str(device), batch=args.samples)
     jit_wf, jit_true = decode_rates(vae.decoder, tokeniser, gen.view(-1, k, d) * scale)
 
@@ -147,7 +149,8 @@ def main() -> None:
     base.eval()
 
     torch.manual_seed(args.seed)
-    ode = draft(base, None, 1, k, d, args.nfe, device=str(device), batch=args.samples)
+    ode = draft(base, None, 1, k, d, args.nfe, eta=0.0,
+                device=str(device), batch=args.samples)
     ode_wf, ode_true = decode_rates(vae.decoder, tokeniser, ode.view(-1, k, d) * scale)
 
     print()
@@ -177,7 +180,7 @@ def main() -> None:
             note = ""
             if eta == 0.0:
                 torch.manual_seed(args.seed)
-                z_ode = draft(base, None, 1, k, d, nfe,
+                z_ode = draft(base, None, 1, k, d, nfe, eta=0.0,
                               device=str(device), batch=args.samples)
                 delta = (z - z_ode).abs().max().item()
                 note = f"identity check vs draft: max|diff| = {delta:.2e}"

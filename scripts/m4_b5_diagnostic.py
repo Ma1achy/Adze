@@ -116,7 +116,8 @@ def main() -> None:
 
     model.eval()
     torch.manual_seed(args.seed)
-    gen = draft(model, None, B5, k, d, args.nfe,
+    # eta=0: this run's recorded number predates the eta=1 default.
+    gen = draft(model, None, B5, k, d, args.nfe, eta=0.0,
                 device=str(device), batch=args.samples)
     with torch.no_grad():
         texts = [

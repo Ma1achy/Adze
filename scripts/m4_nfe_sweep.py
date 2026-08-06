@@ -43,10 +43,17 @@ CACHE_DIR = Path("data/cache")
 NFE_VALUES = [8, 16, 32, 50, 100]
 SHIFTS = [1.0, 1.5]
 
+# Run at both stochasticities. They ask different questions: eta = 0 re-asks
+# whether truncation error matters, on a model that — unlike the one this sweep
+# originally ran against — can actually use its prefix. eta = 1 asks whether the
+# promoted stochastic sampler still wants more budget.
+ETAS = [0.0, 1.0]
+
 
 @torch.no_grad()
 def sample_and_score(
-    denoiser, decoder, tokeniser, arch, scale, nfe, shift, samples, device, seed
+    denoiser, decoder, tokeniser, arch, scale, nfe, shift, samples, device, seed,
+    eta=0.0,
 ):
     """Draft `samples` traces at (nfe, shift) and classify every block's decode.
 
@@ -64,7 +71,7 @@ def sample_and_score(
     probe = TrajectoryRecorder(decoder, tokeniser, arch["latents_per_block"], scale)
     draft(
         denoiser, None, blocks, arch["latents_per_block"], arch["latent_dim"], nfe,
-        device=str(device), batch=1, recorder=probe, shift=shift,
+        device=str(device), batch=1, recorder=probe, shift=shift, eta=eta,
     )
     shell = probe.shell()
     # The departure that matters is at the END of each block's window, where
@@ -76,7 +83,7 @@ def sample_and_score(
     torch.manual_seed(seed)
     latents = draft(
         denoiser, None, blocks, arch["latents_per_block"], arch["latent_dim"], nfe,
-        device=str(device), batch=samples, shift=shift,
+        device=str(device), batch=samples, shift=shift, eta=eta,
     )
     per_block_latents = (latents * scale).view(
         samples * blocks, arch["latents_per_block"], -1
@@ -113,7 +120,7 @@ def main() -> None:
     print(f"denoiser      {args.denoiser}  {arch['n_layers']}L x {arch['d_model']}w")
     print(f"vae           {args.vae}  D={arch['latent_dim']}")
     print(f"latent scale  {scale:.4f}")
-    print(f"sweep         nfe {NFE_VALUES} x shift {SHIFTS}, "
+    print(f"sweep         eta {ETAS} x nfe {NFE_VALUES} x shift {SHIFTS}, "
           f"{args.samples} traces x B={blocks} blocks per cell")
     print()
 
@@ -138,28 +145,34 @@ def main() -> None:
     print("=" * 78)
     print(f"  {'nfe':>4} {'shift':>6} {'well-formed':>12} {'d floor':>9} "
           f"{'true':>8} {'d floor':>9} {'shell err':>10} {'secs':>7}")
-    for shift in SHIFTS:
-        for nfe in NFE_VALUES:
-            t0 = time.perf_counter()
-            formed, true, per_block, shell_err = sample_and_score(
-                denoiser, vae.decoder, tokeniser, arch, scale, nfe, shift,
-                args.samples, device, args.seed,
-            )
-            secs = time.perf_counter() - t0
-            rows.append((nfe, shift, formed, true, per_block, shell_err))
-            print(f"  {nfe:>4} {shift:>6.1f} {formed:>12.1%} {formed - floor:>+9.1%} "
-                  f"{true:>8.1%} {true - floor_true:>+9.1%} {shell_err:>10.3f} "
-                  f"{secs:>7.1f}")
+    for eta in ETAS:
+        print(f"  --- eta = {eta:.1f} " + "-" * 55)
+        for shift in SHIFTS:
+            for nfe in NFE_VALUES:
+                t0 = time.perf_counter()
+                formed, true, per_block, shell_err = sample_and_score(
+                    denoiser, vae.decoder, tokeniser, arch, scale, nfe, shift,
+                    args.samples, device, args.seed, eta=eta,
+                )
+                secs = time.perf_counter() - t0
+                rows.append((eta, nfe, shift, formed, true, per_block, shell_err))
+                # `shell err` is only meaningful at eta = 0: the stochastic step
+                # deliberately moves the point off the noise shell, so a departure
+                # under eta > 0 measures the sampler doing its job, not error.
+                shell = f"{shell_err:>10.3f}" if eta == 0.0 else f"{'n/a':>10}"
+                print(f"  {nfe:>4} {shift:>6.1f} {formed:>12.1%} "
+                      f"{formed - floor:>+9.1%} {true:>8.1%} "
+                      f"{true - floor_true:>+9.1%} {shell} {secs:>7.1f}", flush=True)
 
     print()
     print("=" * 78)
     print("PER-BLOCK ARITHMETIC TRUTH")
     print("=" * 78)
     header = "  ".join(f"b{b}".rjust(6) for b in range(blocks))
-    print(f"  {'nfe':>4} {'shift':>6}  {header}")
-    for nfe, shift, _, _, per_block, _ in rows:
+    print(f"  {'eta':>4} {'nfe':>4} {'shift':>6}  {header}")
+    for eta, nfe, shift, _, _, per_block, _ in rows:
         cells = "  ".join(f"{tr:>6.1%}" for _, tr in per_block)
-        print(f"  {nfe:>4} {shift:>6.1f}  {cells}")
+        print(f"  {eta:>4.1f} {nfe:>4} {shift:>6.1f}  {cells}")
 
     print()
     print(f"  Read the `true` column against the {floor_true:.1%} floor, not against zero.")

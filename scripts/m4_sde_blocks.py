@@ -134,8 +134,8 @@ def main() -> None:
                 # ODE the earlier numbers were measured under.
                 torch.manual_seed(args.seed)
                 ode = draft(denoiser, None, blocks, march["latents_per_block"],
-                            march["latent_dim"], args.nfe, device=str(device),
-                            batch=args.samples)
+                            march["latent_dim"], args.nfe, eta=0.0,
+                            device=str(device), batch=args.samples)
                 print(f"identity check  eta=0 vs draft ODE: "
                       f"max|diff| = {(latents - ode).abs().max().item():.2e}")
                 print()

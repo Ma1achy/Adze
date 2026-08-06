@@ -27,7 +27,7 @@ from adze.data.dataset import LatentCache
 from adze.data.tokeniser import CharTokeniser
 from adze.model.denoiser import Denoiser
 from adze.model.vae import build_vae
-from adze.sample.draft import draft
+from adze.sample.draft import DEFAULT_ETA, draft
 from adze.sample.trajectory import TrajectoryRecorder, classify, noise_floor
 
 CACHE_DIR = Path("data/cache")
@@ -42,6 +42,9 @@ def main() -> None:
     p.add_argument("--nfe", type=int, default=None)
     p.add_argument("--every", type=int, default=1)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--eta", type=float, default=None,
+                   help="stochasticity; None uses draft's default (1.0). "
+                        "Pass 0 for the ODE the pre-promotion numbers used.")
     p.add_argument("--zero-prefix", action="store_true",
                    help="match a model trained with --zero-prefix")
     args = p.parse_args()
@@ -66,12 +69,14 @@ def main() -> None:
         CACHE_DIR / f"latents_{config.name}_d{arch['latent_dim']}.pt"
     ).scale
     nfe = args.nfe if args.nfe is not None else config.sample.nfe
+    eta = args.eta if args.eta is not None else DEFAULT_ETA
 
     print(f"denoiser      {args.denoiser}  {arch['n_layers']}L x {arch['d_model']}w")
     print(f"vae           {args.vae}  D={arch['latent_dim']}")
     print(f"latent scale  {scale:.4f}")
     print(f"sampling      B={arch['blocks']} K={arch['latents_per_block']} nfe={nfe} "
           f"({nfe * arch['blocks']} forward passes per trace)")
+    print(f"eta           {eta}  {'(ODE)' if eta == 0 else '(stochastic)'}")
     print()
 
     # ---- Noise floor, measured for THIS decoder ------------------------------
@@ -109,6 +114,7 @@ def main() -> None:
         batch=1,
         recorder=recorder,
         zero_prefix=args.zero_prefix,
+        eta=eta,
     )
     print()
     print("=" * 74)
@@ -127,6 +133,7 @@ def main() -> None:
         device=str(device),
         batch=args.samples,
         zero_prefix=args.zero_prefix,
+        eta=eta,
     )
     per_block = (latents * scale).view(
         args.samples * arch["blocks"], arch["latents_per_block"], -1

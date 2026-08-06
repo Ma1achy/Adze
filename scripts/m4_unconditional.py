@@ -160,7 +160,8 @@ def main() -> None:
             z0, k, d, config, args.steps, args.batch, args.lr, shift, device, args.seed
         )
         torch.manual_seed(args.seed)
-        gen = draft(model, None, 1, k, d, args.nfe,
+        # eta=0 pinned: the 38.6% this script recorded is an ODE number.
+        gen = draft(model, None, 1, k, d, args.nfe, eta=0.0,
                     device=str(device), batch=args.samples)
         wf, tr = decode_rates(vae.decoder, tokeniser, gen.view(-1, k, d) * scale)
 
