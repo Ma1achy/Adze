@@ -32,6 +32,7 @@ from adze.model.denoiser import Denoiser
 from adze.model.flow import interpolate, sample_timesteps, velocity_target
 from adze.model.masks import regime_a_mask, vectorised_regime_a_mask
 from adze.pad import masked_mean, real_positions
+from adze.train.regime_b import regime_b_batch, regime_b_loss
 
 CHECKPOINT_DIR = Path("checkpoints")
 CACHE_DIR = Path("data/cache")
@@ -253,7 +254,11 @@ def train_denoiser(
 ) -> dict[str, float]:
     """Args:
         config_path: yaml config.
-        mixed: False for M3 (regime A only), True for M6 (90/10 mix).
+        mixed: False for M3 (regime A only), True for M6 — the 90/10 mix of
+            regime A (draft) and regime B (refine). The split comes from
+            `config.train.regime_b_prob`. DiD's bimodal finding is the reason it
+            is a mix rather than two separate models: the two regimes share a
+            denoiser, and refine needs draft's representation to stay put.
         t_shift: shift for logit-normal timestep sampling. 1.5 concentrates draws
             at high t (SD3's setting, and M3's); 1.0 is plain logit-normal; values
             BELOW 1 invert the transform and concentrate on small t, which is where
@@ -281,9 +286,6 @@ def train_denoiser(
             and the depth goes in the checkpoint name so a deeper run cannot
             overwrite the 2-layer one it is being compared against.
     """
-    if mixed:
-        raise NotImplementedError("regime B and the 90/10 mix are M6, not M3")
-
     config = load_config(config_path)
     torch.manual_seed(seed)
     device = torch.device(config.device)
@@ -379,12 +381,25 @@ def train_denoiser(
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=n_steps)
 
     print()
-    print(f"regime A training — {n_steps} steps, batch {n_batch}, lr {n_lr}")
+    b_prob = config.train.regime_b_prob if mixed else 0.0
+    label = (f"regime A + B mix ({1 - b_prob:.0%}/{b_prob:.0%})" if mixed
+             else "regime A training")
+    print(f"{label} — {n_steps} steps, batch {n_batch}, lr {n_lr}")
     t0 = time.perf_counter()
     model.train()
+    n_b_steps = 0
     for step in range(1, n_steps + 1):
         idx = torch.randint(0, latents.shape[0], (n_batch,), device=device)
-        if vectorised:
+        # Regime B on a b_prob share of steps. Drawn per step rather than per
+        # example: the two regimes use DIFFERENT masks and different sequence
+        # lengths, so they cannot share a forward pass.
+        if mixed and torch.rand(1, device=device).item() < b_prob:
+            n_b_steps += 1
+            batch = regime_b_batch(
+                latents[idx], block_ids, blocks, block_mask=block_mask[idx],
+            )
+            loss = regime_b_loss(model, batch, block_ids)
+        elif vectorised:
             batch = vectorised_regime_a_batch(
                 latents[idx], block_ids, blocks, block_mask=block_mask[idx],
                 t_shift=t_shift, zero_prefix=zero_prefix,
@@ -404,8 +419,9 @@ def train_denoiser(
         sched.step()
 
         if step % max(1, n_steps // 10) == 0 or step == 1:
-            note = "all" if vectorised else int(batch["block"])
-            print(f"  step {step:>6}  loss {loss.item():.6f}  block {note}")
+            note = "all" if vectorised else batch.get("block", "all")
+            extra = f"  regime B steps {n_b_steps}" if mixed else ""
+            print(f"  step {step:>6}  loss {loss.item():.6f}  block {note}{extra}")
 
     print(f"\ntrained in {time.perf_counter() - t0:.1f}s")
 
@@ -417,6 +433,7 @@ def train_denoiser(
     suffix += "" if seed == 0 else f"_seed{seed}"
     suffix += "_zeroprefix" if zero_prefix else ""
     suffix += "" if n_layers is None else f"_L{depth}"
+    suffix += "_mixed" if mixed else ""
     ckpt = CHECKPOINT_DIR / f"denoiser_{config.name}_d{latents.shape[-1]}{suffix}.pt"
     torch.save(
         {
@@ -433,6 +450,7 @@ def train_denoiser(
             "latent_scale": cache.scale,
             "t_shift": t_shift,
             "zero_prefix": zero_prefix,
+            "mixed": mixed,
         },
         ckpt,
     )
@@ -458,11 +476,14 @@ def main() -> None:
     p.add_argument("--lr", type=float, default=None)
     p.add_argument("--denoiser-layers", type=int, default=None,
                    help="override denoiser depth; checkpoint is suffixed _L{n}")
+    p.add_argument("--mixed", action="store_true",
+                   help="M6: mix regime B (refine) in at config.train.regime_b_prob")
     args = p.parse_args()
     train_denoiser(args.config, steps=args.steps, gate_steps=args.gate_steps,
                    latent_dim=args.latent_dim, seed=args.seed, t_shift=args.t_shift,
                    batch_size=args.batch, lr=args.lr, vectorised=not args.naive,
-                   zero_prefix=args.zero_prefix, n_layers=args.denoiser_layers)
+                   zero_prefix=args.zero_prefix, n_layers=args.denoiser_layers,
+                   mixed=args.mixed)
 
 
 if __name__ == "__main__":
