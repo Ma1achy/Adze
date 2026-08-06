@@ -17,9 +17,16 @@ import torch
 
 from adze.invariants import MaskMode
 from adze.model.denoiser import Denoiser
-from adze.model.flow import euler_step, schedule
+from adze.model.flow import schedule
 from adze.model.masks import regime_a_mask
+from adze.sample.stochastic import churn_t, churn_up, renoise_step
 from adze.sample.trajectory import TrajectoryRecorder
+
+# Default stochasticity. SDE sampling is PROMOTED out of design §8 — see
+# adze.sample.stochastic for the evidence. This default is a real choice about
+# what the sampler does, so it is stated here rather than left implicit at every
+# call site, and eta = 0 recovers the ODE the earlier results were measured under.
+DEFAULT_ETA = 0.0
 
 
 @torch.no_grad()
@@ -37,6 +44,10 @@ def draft(
     mask_for_block: Callable[[torch.Tensor, int], torch.Tensor] = regime_a_mask,
     on_step: Callable[[int, float, int, torch.Tensor], None] | None = None,
     zero_prefix: bool = False,
+    eta: float = DEFAULT_ETA,
+    s_churn: float = 0.0,
+    s_noise: float = 1.0,
+    churn_window: tuple[float, float] = (0.0, 1.0),
 ) -> torch.Tensor:
     """Returns:
         latents: [batch, N, D] the drafted reasoning chain.
@@ -61,6 +72,15 @@ def draft(
         zero_prefix: zero already-generated blocks instead of conditioning on
             them. Must match how the model was TRAINED — a sampler whose prefix
             differs from training's measures something never taught.
+        eta: stochasticity of the update. 0 is the Euler ODE, exactly — the step
+            reduces to it algebraically, not approximately, which is what makes
+            `tests/test_m4_stochastic.py`'s identity check a real guard. 1
+            resamples the noise component completely at every step. See
+            `adze.sample.stochastic`.
+        s_churn, s_noise, churn_window: EDM-style churn — noise UP past the
+            schedule, then integrate back down. 0 disables it and leaves the
+            trajectory bit-identical. `churn_window` is the (t_min, t_max) band
+            churn applies in; EDM leaves the ends of the schedule alone.
         on_step: optional callback (global_step, t, active_block, latents) receiving
             the FULL batch at every step. `recorder` only ever sees sample 0, so a
             variance across the batch cannot be recovered from it; rather than
@@ -82,9 +102,10 @@ def draft(
     # before it are overwritten with their generated values as we go.
     latents = torch.randn(batch, n_positions, latent_dim, device=dev)
 
-    # Knots, not a step size. Under a shift the spacing is non-uniform, so dt is
-    # read off the interval each step actually spans. Hardcoding 1/nfe here would
-    # silently integrate the wrong distance on every step of a shifted schedule.
+    # Knots, not a step size. Under a shift the spacing is non-uniform, so each
+    # step is taken between the two knots it actually spans. Hardcoding 1/nfe here
+    # would silently integrate the wrong distance on every step of a shifted
+    # schedule — and churn moves the interval's upper end anyway.
     knots = schedule(nfe, shift, device=dev)
     global_step = 0
 
@@ -95,8 +116,20 @@ def draft(
         for i in range(nfe):
             # t runs 1 -> 0 for the active block. Earlier blocks are already clean
             # (t = 0); later blocks are absent, and their t is never read.
-            t_active = float(knots[i])
-            dt = float(knots[i] - knots[i + 1])
+            t_active, s_active = float(knots[i]), float(knots[i + 1])
+
+            # Churn first: noise the active block UP to t_hat, then integrate from
+            # there. Costs no function evaluation, and is the identity at
+            # s_churn = 0 — t_hat is t and churn_up returns its input unchanged.
+            t_hat, _gamma = churn_t(
+                t_active, s_churn, nfe, churn_window[0], churn_window[1]
+            )
+            if t_hat > t_active:
+                latents = torch.where(
+                    is_active, churn_up(latents, t_active, t_hat, s_noise), latents
+                )
+                t_active = t_hat
+
             t = torch.zeros(batch, blocks, device=dev)
             t[:, b] = t_active
             t[:, b + 1 :] = 1.0
@@ -111,7 +144,7 @@ def draft(
 
             # Integrate the active block only. Applying the step everywhere would
             # walk the finished blocks off their values.
-            stepped = euler_step(latents, velocity, dt)
+            stepped = renoise_step(latents, velocity, t_active, s_active, eta)
             latents = torch.where(is_active, stepped, latents)
 
             global_step += 1

@@ -249,6 +249,7 @@ def train_denoiser(
     lr: float | None = None,
     vectorised: bool = True,
     zero_prefix: bool = False,
+    n_layers: int | None = None,
 ) -> dict[str, float]:
     """Args:
         config_path: yaml config.
@@ -273,6 +274,12 @@ def train_denoiser(
             prefix that carries only 2-7% of the information about the next block.
             Threaded into `draft` as well, since a sampler whose prefix differs
             from training's measures something the model was never taught.
+        n_layers: override the config's denoiser depth. Every result so far is at
+            debug.yaml's 2 layers, so "the model cannot do arithmetic above 30"
+            and "a 2-layer model cannot" are not yet distinguishable. A CLI
+            override rather than a config edit, for the same reason as batch/lr,
+            and the depth goes in the checkpoint name so a deeper run cannot
+            overwrite the 2-layer one it is being compared against.
     """
     if mixed:
         raise NotImplementedError("regime B and the 90/10 mix are M6, not M3")
@@ -289,11 +296,12 @@ def train_denoiser(
     blocks = config.data.blocks_per_sequence
     k = config.model.latents_per_block
     block_ids = torch.repeat_interleave(torch.arange(blocks), k).to(device)
+    depth = n_layers if n_layers is not None else config.model.denoiser.n_layers
 
     model = Denoiser(
         latent_dim=latents.shape[-1],
         d_model=config.model.denoiser.d_model,
-        n_layers=config.model.denoiser.n_layers,
+        n_layers=depth,
         n_heads=config.model.denoiser.n_heads,
         latents_per_block=k,
         blocks=blocks,
@@ -362,7 +370,7 @@ def train_denoiser(
     model = Denoiser(
         latent_dim=latents.shape[-1],
         d_model=config.model.denoiser.d_model,
-        n_layers=config.model.denoiser.n_layers,
+        n_layers=depth,
         n_heads=config.model.denoiser.n_heads,
         latents_per_block=k,
         blocks=blocks,
@@ -408,6 +416,7 @@ def train_denoiser(
     suffix += "" if vectorised else "_naive"
     suffix += "" if seed == 0 else f"_seed{seed}"
     suffix += "_zeroprefix" if zero_prefix else ""
+    suffix += "" if n_layers is None else f"_L{depth}"
     ckpt = CHECKPOINT_DIR / f"denoiser_{config.name}_d{latents.shape[-1]}{suffix}.pt"
     torch.save(
         {
@@ -416,7 +425,7 @@ def train_denoiser(
             "arch": {
                 "latent_dim": latents.shape[-1],
                 "d_model": config.model.denoiser.d_model,
-                "n_layers": config.model.denoiser.n_layers,
+                "n_layers": depth,
                 "n_heads": config.model.denoiser.n_heads,
                 "latents_per_block": k,
                 "blocks": blocks,
@@ -447,11 +456,13 @@ def main() -> None:
     p.add_argument("--naive", action="store_true",
                    help="use the pre-vectorisation per-block algorithm")
     p.add_argument("--lr", type=float, default=None)
+    p.add_argument("--denoiser-layers", type=int, default=None,
+                   help="override denoiser depth; checkpoint is suffixed _L{n}")
     args = p.parse_args()
     train_denoiser(args.config, steps=args.steps, gate_steps=args.gate_steps,
                    latent_dim=args.latent_dim, seed=args.seed, t_shift=args.t_shift,
                    batch_size=args.batch, lr=args.lr, vectorised=not args.naive,
-                   zero_prefix=args.zero_prefix)
+                   zero_prefix=args.zero_prefix, n_layers=args.denoiser_layers)
 
 
 if __name__ == "__main__":
