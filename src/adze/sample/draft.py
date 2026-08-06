@@ -44,6 +44,7 @@ def draft(
     mask_for_block: Callable[[torch.Tensor, int], torch.Tensor] = regime_a_mask,
     on_step: Callable[[int, float, int, torch.Tensor], None] | None = None,
     zero_prefix: bool = False,
+    clean_prefix: torch.Tensor | None = None,
     eta: float = DEFAULT_ETA,
     s_churn: float = 0.0,
     s_noise: float = 1.0,
@@ -72,6 +73,13 @@ def draft(
         zero_prefix: zero already-generated blocks instead of conditioning on
             them. Must match how the model was TRAINED — a sampler whose prefix
             differs from training's measures something never taught.
+        clean_prefix: [batch, N, D] real cached latents to condition on instead of
+            the generated prefix — teacher forcing. This is the upper arm of the
+            exposure-bias comparison: `clean_prefix` given is the CORRECT prefix,
+            `zero_prefix` is NO prefix, and neither given is the GENERATED prefix
+            the model actually has to live with at inference. Takes precedence over
+            `zero_prefix`; the active block and everything after it are untouched,
+            so only the conditioning changes.
         eta: stochasticity of the update. 0 is the Euler ODE, exactly — the step
             reduces to it algebraically, not approximately, which is what makes
             `tests/test_m4_stochastic.py`'s identity check a real guard. 1
@@ -135,7 +143,11 @@ def draft(
             t[:, b + 1 :] = 1.0
 
             model_in = latents
-            if zero_prefix:
+            if clean_prefix is not None:
+                model_in = torch.where(
+                    (block_ids < b).view(1, n_positions, 1), clean_prefix, latents
+                )
+            elif zero_prefix:
                 model_in = torch.where(
                     (block_ids < b).view(1, n_positions, 1),
                     torch.zeros_like(latents), latents,
