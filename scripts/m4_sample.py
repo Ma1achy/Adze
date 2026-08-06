@@ -42,6 +42,8 @@ def main() -> None:
     p.add_argument("--nfe", type=int, default=None)
     p.add_argument("--every", type=int, default=1)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--zero-prefix", action="store_true",
+                   help="match a model trained with --zero-prefix")
     args = p.parse_args()
 
     config = load_config(args.config)
@@ -106,6 +108,7 @@ def main() -> None:
         device=str(device),
         batch=1,
         recorder=recorder,
+        zero_prefix=args.zero_prefix,
     )
     print()
     print("=" * 74)
@@ -123,6 +126,7 @@ def main() -> None:
         nfe,
         device=str(device),
         batch=args.samples,
+        zero_prefix=args.zero_prefix,
     )
     per_block = (latents * scale).view(
         args.samples * arch["blocks"], arch["latents_per_block"], -1
