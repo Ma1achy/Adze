@@ -45,6 +45,13 @@ OPS: dict[str, Callable[[int, int], int]] = {
 # capping or rewriting a result afterwards.
 MAGNITUDE_CAP = 1_000
 
+# The cap is a PARAMETER, not just this constant. It turned out to set the whole
+# character of the task: the leaf fixed point converges against it, so cap 1000
+# produced three-digit arithmetic and killed multiplication (products of large
+# operands do not fit), while a smaller cap keeps both operands and products in a
+# learnable range. `MAGNITUDE_CAP` remains the default so every existing caller and
+# every recorded result is unchanged.
+
 # Probability that a child position becomes a subtree rather than a literal.
 BRANCH_P = 0.6
 
@@ -147,7 +154,8 @@ def _leaf(rng: random.Random, operand_max: int,
 
 
 def _build(rng: random.Random, depth: int, operand_max: int,
-           leaf_values: tuple[int, ...] | None = None) -> tuple[_Node, int]:
+           leaf_values: tuple[int, ...] | None = None,
+           magnitude_cap: int = MAGNITUDE_CAP) -> tuple[_Node, int]:
     """Build one expression-tree node bottom-up, returning it and its value.
 
     Construction is post-order, so the children's actual values are known by the
@@ -171,21 +179,21 @@ def _build(rng: random.Random, depth: int, operand_max: int,
     branch_right = depth > 1 and rng.random() < BRANCH_P
 
     if branch_left:
-        left, lhs = _build(rng, depth - 1, operand_max, leaf_values)
+        left, lhs = _build(rng, depth - 1, operand_max, leaf_values, magnitude_cap)
     else:
         lhs = _leaf(rng, operand_max, leaf_values)
         left = lhs
 
     if branch_right:
-        right, rhs = _build(rng, depth - 1, operand_max, leaf_values)
+        right, rhs = _build(rng, depth - 1, operand_max, leaf_values, magnitude_cap)
     else:
         rhs = _leaf(rng, operand_max, leaf_values)
         right = rhs
 
-    allowed = [op for op, f in OPS.items() if abs(f(lhs, rhs)) <= MAGNITUDE_CAP]
+    allowed = [op for op, f in OPS.items() if abs(f(lhs, rhs)) <= magnitude_cap]
     if not allowed:
         raise RuntimeError(
-            f"no operator keeps {lhs} ? {rhs} within {MAGNITUDE_CAP}; "
+            f"no operator keeps {lhs} ? {rhs} within {magnitude_cap}; "
             f"leaf pool reaches {max(leaf_values) if leaf_values else operand_max}, "
             f"too large for the cap"
         )
@@ -222,6 +230,7 @@ def generate_trace(
     operand_max: int = 100,
     min_steps: int = 3,
     leaf_values: tuple[int, ...] | None = None,
+    magnitude_cap: int = MAGNITUDE_CAP,
 ) -> Trace:
     """Generate one valid trace from a random expression tree.
 
@@ -252,7 +261,8 @@ def generate_trace(
     rng = random.Random(rng_seed)
 
     for _ in range(MAX_BUILD_ATTEMPTS):
-        root, _value = _build(rng, max_depth, operand_max, leaf_values)
+        root, _value = _build(rng, max_depth, operand_max, leaf_values,
+                              magnitude_cap)
         steps: list[Step] = []
         answer, _ = _emit(root, steps)
         if len(steps) >= floor:
@@ -273,6 +283,7 @@ def generate_dataset(
     operand_max: int = 100,
     min_steps: int = 3,
     leaf_values: tuple[int, ...] | None = None,
+    magnitude_cap: int = MAGNITUDE_CAP,
 ) -> list[Trace]:
     """Generate `n` traces. Reproducible given `seed`."""
     return [
@@ -282,6 +293,7 @@ def generate_dataset(
             operand_max=operand_max,
             min_steps=min_steps,
             leaf_values=leaf_values,
+            magnitude_cap=magnitude_cap,
         )
         for i in range(n)
     ]
@@ -304,6 +316,7 @@ def fixed_point_leaves(
     seed: int = 0,
     max_depth: int = 3,
     operand_max: int = 20,
+    magnitude_cap: int = MAGNITUDE_CAP,
     on_iteration=None,
 ) -> tuple[int, ...]:
     """Iterate the leaf distribution to a fixed point against its own results.
@@ -335,6 +348,7 @@ def fixed_point_leaves(
         traces = generate_dataset(
             n=n, seed=seed + i, max_depth=max_depth,
             operand_max=operand_max, leaf_values=leaves,
+            magnitude_cap=magnitude_cap,
         )
         results = result_magnitudes(traces)
         if on_iteration is not None:
@@ -351,6 +365,7 @@ def configured_leaves(
     seed: int,
     max_depth: int,
     operand_max: int,
+    magnitude_cap: int = MAGNITUDE_CAP,
 ) -> tuple[int, ...] | None:
     """The leaf pool a config asks for. Cached — the fixed point costs ~40s.
 
@@ -367,4 +382,5 @@ def configured_leaves(
     return fixed_point_leaves(
         iterations=iterations, n=20_000, seed=seed,
         max_depth=max_depth, operand_max=operand_max,
+        magnitude_cap=magnitude_cap,
     )
