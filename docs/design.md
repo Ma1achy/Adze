@@ -178,12 +178,52 @@ L = E_{t,ε} ‖ u_θ(z_t, t, c) − (ε − z₀) ‖²
 z_{t−Δt} = z_t − Δt · u_θ(z_t, t, c)
 ```
 
-**Regime A — draft (~90% of steps)**
-1. Sample block index `b`
-2. Sample `t ~ U(0,1)`; noise block `b` only
-3. Blocks `< b` clean; blocks `> b` absent
-4. Attention: bidirectional within `b`, causal to `< b`
-5. Loss on block `b`
+**Regime A — draft (~90% of steps)** — vectorised: every block, one pass.
+
+1. Sample `t_b` **per block**, all `B` at once (logit-normal, shift 1.5)
+2. Noise every block to its own `t_b`
+3. Run the model over the concatenation `[z_t ; z0]`, length `2N`
+4. Attention — the four quadrants of `M_full`:
+
+```
+M_full = [[M_BD, M_OBC],    M_BD   block(j) == block(i)   noised -> its own block only
+          [0,    M_BC ]]    M_OBC  block(j) <  block(i)   noised -> clean, strictly earlier
+                            0                             clean  -> noised, never
+                            M_BC   block(j) <= block(i)   clean  -> clean, block-causal
+```
+
+5. Loss on the noised half, every block, pad positions masked out
+
+`M_BD` is what makes this correct: a noised block sees no other block's noised
+state, so its prediction depends only on itself and its clean prefix — exactly the
+conditional the sampler faces at inference. Clean/generated prefix blocks carry
+`t = 0` in training and in sampling alike. `visible_prefix_mask` survives as a
+sampling-time construct only.
+
+*This replaces the naive form — "sample block `b`, noise block `b` only, loss on
+`b`" — which is what we implemented first and ran through M4.* The naive version
+needs a separate function evaluation per block, because the clean context `x^<b`
+differs for each `b`. At `B=7` that gave each block position a seventh of the
+gradient steps: ~46k draws per position against 5.1M for an equivalent
+unconditional model, a **~110x starvation**. It also converges ~5x slower — ~30k
+steps to the same overfit-gate threshold that the vectorised form crosses in 6k.
+Measured effect of the switch: block-conditional arithmetic truth went from 6.6%
+(at the 6.7% noise floor) to 29.4%.
+
+Source: BD3-LM, arXiv 2503.09573 §3.2 and Suppl. B.6. The vectorisation and the
+mask transfer directly. The noise process does not — theirs is discrete
+absorbing-state masking with a weighted cross-entropy NELBO, ours is continuous
+rectified flow with unweighted velocity MSE. Their clipped noise schedules are
+over mask rates and do not map onto `t`, though their finding that extreme rates
+give high-variance gradients agrees with ours: for `L'=4`, the same block size as
+our `K=4`, their best range was `U[.5, 1]`, and our shift 1.5 (high `t`) beat
+shift 0.5 by 8pp. Note this needs no KV cache, so it does not touch the
+KV-caching item deferred until after M7.
+
+**Regime B will need the same treatment at M6.** It has the identical structure —
+a per-example subset `S` noised against clean context — so a naive implementation
+starves it exactly the same way. The reason will not be obvious by then; this is
+the note.
 
 **Regime B — refinement (~10% of steps)**
 1. Sample `ρ`; select a subset `S` of blocks

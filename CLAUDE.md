@@ -53,7 +53,7 @@ loss = || u_theta(z_t, t, ctx) - (eps - z0) ||^2
 z_{t-dt} = z_t - dt * u_theta(z_t, t, ctx)      # integrate t: 1 -> 0
 ```
 
-**Regime A — draft (90% of steps):** sample block `b`; noise block `b` only; blocks `< b` clean; blocks `> b` absent; causal mask; loss on `b`.
+**Regime A — draft (90% of steps):** VECTORISED — every block noised to its own `t_b` and scored in one pass over `[z_t ; z0]`, under the four-quadrant mask in design §3.1. The naive form (sample one `b`, loss on `b` alone) starved each block position ~110x and converges ~5x slower; it is kept only as the equivalence-test reference. Prefix blocks carry `t = 0` in training and sampling alike.
 
 **Regime B — refine (10% of steps):** select subset `S`; set `t_i = 1` for `i in S` (complete erasure); blocks outside `S` clean; global mask; loss on `S`.
 
@@ -96,6 +96,29 @@ Keep `configs/debug.yaml` working at every milestone — 2 layers, 128 wide, 8 N
 **Reconstruction fidelity and representation quality are close to unrelated.** A VAE can reconstruct at >97% while its latent space is spiky and awkward, and the symptom arrives at M3 disguised as "the denoiser won't train". `scripts/m2_interpolate.py` decodes latent midpoints as an early warning — it is a diagnostic, not a gate.
 
 **Read its nearest-neighbour rank, not its round-trip cosine.** Cosine asks whether a point lies in the encoder's *stable set*; it does not ask whether the point means anything. The two come apart exactly when the encoder is degenerate — a collapsed space round-trips everything well because everything is near everything. Measured: D=8 has the *best* chance-normalised cosine (0.769 vs 0.673 at D=16) and the *worst* NN rank by a factor of four (median 29 vs 6, both-endpoints-in-top-10 25% vs 56%), matching its 29% unseen reconstruction. Cosine said D=8 was the smoothest space; it was the most collapsed one. Never compare cosine across latent dimensionality.
+
+## Standing findings
+
+**Loss is not a proxy for sample quality here.** Three independent instances:
+block 0 floors highest on gate loss (12.9%) while sampling *strongest* (61% true);
+timestep shift 0.5 nearly halved training loss (0.39 vs 0.71) while losing 8pp of
+truth (30.3% vs 38.6%); and after vectorisation the per-block gate losses are flat
+(0.56-0.82%) while per-block truth spans 5.6-61.0%. Three cases makes it a
+property, not a coincidence. A loss number that looks encouraging is not evidence
+about samples — decode and classify.
+
+**Vectorised regime A converges ~5x faster than the naive form.** The naive
+algorithm scores one block per step and needs ~30k gate steps to cross the 2%
+threshold; vectorised crosses it in 6k and lands lower (0.8% vs 1.14%). Budget
+accordingly: a 6k naive run is under-converged, and several M4 diagnostics taken
+on one turned out to be measuring undertraining rather than the thing they named.
+
+**Any number that gates a decision gets reported with its budget and its spread.**
+An M3 gate figure of 1.20% was reported as a single draw without its step count;
+later 6k runs read 2.2-2.8% and were mistaken for a regression, then for
+nondeterminism. It cost several sessions to establish that the number came from a
+30k run. Actual MPS run-to-run drift on this gate is ~0.06pp. State the budget,
+state the spread over seeds, or the number is not a result.
 
 ## Style
 
