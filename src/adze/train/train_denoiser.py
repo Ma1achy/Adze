@@ -276,6 +276,7 @@ def train_denoiser(
     zero_prefix: bool = False,
     n_layers: int | None = None,
     regime_b_prob: float | None = None,
+    tag: str | None = None,
 ) -> dict[str, float]:
     """Args:
         config_path: yaml config.
@@ -474,6 +475,10 @@ def train_denoiser(
     # layer count do: a sweep over it would otherwise overwrite its own earlier
     # arms, and the comparison needs all of them.
     suffix += f"_mixedP{round(b_prob * 100)}" if mixed else ""
+    # Distinguishes otherwise-identical runs WITHOUT touching a knob that
+    # changes the run. Borrowing --seed for this cost a confound once:
+    # matched-A differed from its comparison in step count AND seed.
+    suffix += "" if tag is None else f"_{tag}"
     ckpt = CHECKPOINT_DIR / f"denoiser_{config.name}_d{latents.shape[-1]}{suffix}.pt"
     torch.save(
         {
@@ -529,6 +534,11 @@ def main() -> None:
     p.add_argument("--lr", type=float, default=None)
     p.add_argument("--denoiser-layers", type=int, default=None,
                    help="override denoiser depth; checkpoint is suffixed _L{n}")
+    p.add_argument("--tag", type=str, default=None,
+                   help="arbitrary suffix to distinguish otherwise-identical runs. "
+                        "Use this rather than --seed to avoid a checkpoint-name "
+                        "collision: --seed changes the RUN, so borrowing it to "
+                        "rename a file confounds the comparison it was made for")
     p.add_argument("--regime-b-prob", type=float, default=None,
                    help="override config.train.regime_b_prob. The knob M7's "
                         "crossing table pointed at; goes in the checkpoint name")
@@ -539,7 +549,8 @@ def main() -> None:
                    latent_dim=args.latent_dim, seed=args.seed, t_shift=args.t_shift,
                    batch_size=args.batch, lr=args.lr, vectorised=not args.naive,
                    zero_prefix=args.zero_prefix, n_layers=args.denoiser_layers,
-                   mixed=args.mixed, regime_b_prob=args.regime_b_prob)
+                   mixed=args.mixed, regime_b_prob=args.regime_b_prob,
+                   tag=args.tag)
 
 
 if __name__ == "__main__":

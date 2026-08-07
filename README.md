@@ -63,14 +63,28 @@ Every one of those needs its qualification stated rather than buried:
    is −2.5pp in the no-pin null. Diagnosed, not assumed — shielding the erased
    block from its own context changes nothing, and crossing conditioning against
    mask shows either departure from the training configuration costs ~5pp alone
-   and both together cost no more. The model is specialised to whichever setup it
-   saw most, and regime B fired on 9.7% of training steps. Subtracting that
-   handicap gives +4.8pp, and a second independent estimate from the redirected
-   pin gives +4.4pp. **Whether the handicap is genuinely additive is currently
-   being tested by a regime-mix pilot.** If it is not, this number comes down.
-3. **One seed.** Three seeds at the winning mix is the number the project will
-   stand on. Not spent yet, deliberately — seeding a configuration about to
-   change wastes the runs.
+   and both together cost no more. Subtracting it gives +4.8pp, and a second
+   independent estimate from the redirected pin gives +4.4pp.
+
+   **A regime-mix sweep has since tested the additive assumption and it held
+   up.** Across a 5× change in refine-mode training exposure the handicap did not
+   move (−2.3 → −2.2) while the raw effect nearly doubled (+1.9 → +3.5): it
+   behaves as a constant penalty independent of the mechanism. It also scales
+   with trace length in a way that is near-identical across mixes — structural,
+   not trained. What it *is* turned out to be the reverse of the guess: global
+   sits flat at chance while causal climbs with more prefix, so it is a
+   prefix-exploitation deficit rather than an irrelevant-context penalty.
+3. **Seed spread is large, and is the binding limitation.** Two p=0.50 runs give
+   +3.5pp and +1.6pp raw. That spread is as wide as a four-point mix sweep's
+   entire range, so **no mix comparison in this repo is currently distinguishable
+   from scatter**. Multi-seed runs at a fixed mix are the next measurement, and
+   until they exist the effect size should be read as "a few points, direction
+   secure, magnitude not".
+
+   One encouraging detail: the same two runs give +5.7pp and +4.8pp *recalibrated*
+   — half the raw spread, because the handicap moved with the effect. If that
+   survives more seeds, the recalibrated figure is a lower-variance estimator and
+   not merely a fairer one.
 
 ## Settled, provisional, and weak
 
@@ -80,9 +94,10 @@ it reverses direction when the downstream evidence is redirected. The harness is
 validated against a stub denoiser, the null is measured rather than assumed, and
 chance is a permutation null rather than an analytic guess.
 
-**Provisional.** The magnitude. +2.3 raw and +4.8 recalibrated bracket it; which
-is right depends on an additivity assumption under test, and neither has a
-multi-seed spread yet.
+**Provisional.** The magnitude. The additivity assumption behind the recalibration
+has survived a direct test, but seed-to-seed spread on the raw effect is ±1pp or
+more and no configuration has been run at multiple seeds. Read the magnitude as
+"a few points" and nothing finer.
 
 **Weak, and under investigation.** Absolute performance. Global reconstructs the
 correct result on 3.6% of traces against a 0.7% chance rate — 5× chance, not 50×.
