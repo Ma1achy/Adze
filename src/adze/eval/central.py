@@ -36,6 +36,18 @@ Uncertainty-based selection is on design §8's not-in-v0 list.
 ## What is measured
 
   repaired      the regenerated block decodes to EXACTLY the clean step
+  result        it gets the RESULT right, whatever it does with the operands.
+                This is the metric the experiment's logic actually points at: the
+                corruption changes a RESULT, and downstream steps consume the
+                original correct value, so downstream context identifies the
+                result and nothing else. The operands are identified by the
+                QUESTION and by earlier steps — and question conditioning (M5) is
+                not built, so for an early block the operands are underdetermined
+                and exact match is unreachable in principle. Reported alongside
+                `repaired`, not instead of it.
+  operands      it gets the operands right, whatever it does with the result —
+                the other half of the decomposition, and the arm that global
+                context should NOT help with
   answer        the trace's final answer is correct after revision
   preserved     unselected blocks decode unchanged — a method that repairs the
                 target by scrambling everything else has not repaired anything
@@ -59,6 +71,14 @@ from adze.sample.stochastic import renoise_step
 
 CONDITIONS = ("none", "causal", "global")
 
+_STEP = __import__("re").compile(r"^(-?\d+) ([+\-*]) (-?\d+) = (-?\d+)$")
+
+
+def _parse(text: str) -> tuple[int, str, int, int] | None:
+    """(lhs, op, rhs, result) or None. Applied to raw output, never to fix it."""
+    m = _STEP.match(text)
+    return None if m is None else (int(m[1]), m[2], int(m[3]), int(m[4]))
+
 
 @dataclass(frozen=True)
 class Repair:
@@ -66,6 +86,9 @@ class Repair:
 
     condition: str
     repaired: float          # regenerated block decodes exactly to the clean step
+    result: float            # ...or at least gets the RESULT right
+    operands: float          # ...or at least gets the OPERANDS right
+    well_formed: float       # ...or at least parses at all
     answer: float            # final answer correct after revision
     preserved: float         # unselected blocks decode unchanged
     n: int
@@ -148,6 +171,28 @@ def regenerate(
     return z
 
 
+@torch.no_grad()
+def encode_traces(vae, tokens: torch.Tensor, block_mask: torch.Tensor,
+                  scale: float) -> torch.Tensor:
+    """[batch, B, T] tokens -> [batch, N, D] latents, in the denoiser's space.
+
+    MUST match `LatentCache.build` exactly, and the reason is worth stating: pad
+    blocks are filled with the VAE's learned `pad_latent`, NOT with whatever the
+    encoder returns for a row of PAD tokens. Those are different vectors, and the
+    denoiser has only ever seen the first. Feeding it the second puts the context
+    off-distribution and the model returns latents that decode to empty strings —
+    measured, before this helper existed: 7.4% well-formed against 99%+ for
+    free-running generation.
+
+    One function so the cache convention and the eval convention cannot drift.
+    """
+    batch, blocks, n_tok = tokens.shape
+    mu, _ = vae.encoder(tokens.view(-1, n_tok))
+    mu = mu.view(batch, blocks, *mu.shape[1:])
+    mu[~block_mask] = vae.pad_latent.to(mu.dtype)
+    return mu.reshape(batch, -1, mu.shape[-1]) / scale
+
+
 def _decode(vae, tokeniser, latents: torch.Tensor, scale: float,
             blocks: int, k: int) -> list[list[str]]:
     """[batch, N, D] scaled latents -> one decoded string per block per example."""
@@ -178,11 +223,19 @@ def score(
     target is the clean text. A revision pass must leave them alone.
     """
     repaired = answered = preserved = 0
+    n_result = n_operands = n_formed = 0
     for i, row in enumerate(decoded):
         b = int(target_block[i])
         clean = clean_steps[i]
         if row[b] == clean[b]:
             repaired += 1
+
+        got, want = _parse(row[b]), _parse(clean[b])
+        if got is not None:
+            n_formed += 1
+            if want is not None:
+                n_result += int(got[3] == want[3])
+                n_operands += int(got[:3] == want[:3])
 
         # Answer: the last real block's result, read off the decoded text.
         last = n_steps[i] - 1
@@ -196,6 +249,9 @@ def score(
     return Repair(
         condition=condition,
         repaired=repaired / n,
+        result=n_result / n,
+        operands=n_operands / n,
+        well_formed=n_formed / n,
         answer=answered / n,
         preserved=preserved / n,
         n=len(decoded),
