@@ -8,9 +8,27 @@ corrupted traces and the SAME checkpoint:
 
 | condition | what it does |
 |---|---|
-| `none`    | no revision — the corrupted trace, untouched. The floor. |
+| `none`    | the corrupted trace, round-tripped through the VAE. NOT a floor. |
 | `causal`  | erase the corrupted block, regenerate under the CAUSAL mask |
 | `global`  | erase the corrupted block, regenerate under the GLOBAL mask |
+
+## `none` is not the baseline, and chance is
+
+`none` was reported as "the floor — the corrupted block, unrevised". It is not.
+The VAE was trained on valid arithmetic only, so a corrupted step is
+off-distribution and the encoder projects it onto the nearest valid one: measured,
+it silently REPAIRS 19.6% of corruptions and preserves them only 34.2% of the
+time. `'7 - 48 = -31'` round-trips to `'7 - 48 = -41'`. So `none` scores on a
+metric that should floor at zero, and what it measures is the round-trip, not
+no-revision. The regeneration arms erase the block and discard that free repair,
+which is why they sit an order of magnitude below it.
+
+The reference is CHANCE, as a permutation null — see `adze.eval.strata`.
+
+Note the direction this cuts: the valid-only prior probably HELPS the treatment
+arms, and the 96-100% well-formedness is consistent with that. Training the VAE
+on corrupted steps is a baseline correction, downstream of these controls rather
+than upstream of them.
 
 `causal` sees only blocks BEFORE the corrupted one. `global` sees the whole chain,
 including the later steps that consumed the original correct value and therefore
