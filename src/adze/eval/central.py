@@ -172,6 +172,7 @@ def regenerate(
     shift: float = 1.0,
     seed: int | None = None,
     mask: torch.Tensor | None = None,
+    erase: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Erase `target_block` in each example and regenerate it. Returns [batch, N, D].
 
@@ -191,6 +192,17 @@ def regenerate(
         mask: override the [N, N] mask. `mode` still conditions the model, so this
             is for diagnostics that hold the conditioning fixed while changing what
             is visible — see `shielded_mask`.
+        erase: [batch, B] bool superseding the one-hot on `target_block`. Erase a
+            SET of blocks while still scoring only `target_block`.
+
+            This exists because regime B trains on subsets, not single blocks:
+            `sample_subset` draws each real block at p = 0.5, giving mean |S| =
+            2.24 with only 30.5% of steps at |S| = 1. M7 erases exactly one. So
+            `mode = REFINE` means "several blocks are gone" in training and "one
+            block is gone" at evaluation, and the sweep over |S| is what separates
+            a pathway specialised to the wrong subset size from one that is simply
+            broken. `target_block` must be inside `erase` or the scored block was
+            never regenerated.
     """
     device = latents.device
     batch, n_positions, _ = latents.shape
@@ -199,10 +211,13 @@ def regenerate(
     if seed is not None:
         torch.manual_seed(seed)
 
-    is_target = (
-        torch.nn.functional.one_hot(target_block, blocks).bool()
-        .repeat_interleave(k, dim=1).unsqueeze(-1)
-    )
+    one_hot = torch.nn.functional.one_hot(target_block, blocks).bool()
+    if erase is None:
+        erase = one_hot
+    elif not bool((erase & one_hot).any(dim=1).all()):
+        raise ValueError("target_block must be inside erase; the scored block "
+                         "would otherwise never be regenerated")
+    is_target = erase.repeat_interleave(k, dim=1).unsqueeze(-1)
     z = torch.where(is_target, torch.randn_like(latents), latents)
     if mask is None:
         mask = revision_mask(block_ids, 0, mode)
@@ -210,10 +225,12 @@ def regenerate(
 
     for i in range(nfe):
         t_val, s_val = float(knots[i]), float(knots[i + 1])
-        # t = t_val on the erased block, 0 everywhere else. Clean blocks are
-        # context and must be presented exactly as training presented them.
-        t = torch.zeros(batch, blocks, device=device)
-        t.scatter_(1, target_block.unsqueeze(1), t_val)
+        # t = t_val on EVERY erased block, 0 everywhere else. Clean blocks are
+        # context and must be presented exactly as training presented them —
+        # which for a multi-block subset means every member carries the same t,
+        # exactly as `regime_b_batch` sets it.
+        t = torch.where(erase, torch.full_like(erase, t_val, dtype=torch.float),
+                        torch.zeros(batch, blocks, device=device))
 
         v = denoiser(z, t, block_ids, mode, mask=mask)
         stepped = renoise_step(z, v, t_val, s_val, eta)

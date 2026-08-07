@@ -16,6 +16,7 @@ What must hold regardless of the model:
 
 from __future__ import annotations
 
+import pytest
 import torch
 
 from adze.eval.central import Repair, regenerate, revision_mask, score
@@ -143,3 +144,46 @@ def test_a_stub_that_reproduces_the_clean_latent_scores_perfectly() -> None:
     decoded = [row[:] for row in clean]
     r = score("global", decoded, clean, torch.tensor([1, 1, 2]), [3, 3, 3])
     assert r.repaired == 1.0 and r.preserved == 1.0 and r.answer == 1.0
+
+
+def test_an_explicit_single_block_erase_set_reproduces_the_one_hot_path() -> None:
+    """The |S| sweep must not perturb |S| = 1, or it cannot be its own control."""
+    z0 = torch.randn(BATCH, N, D)
+    tgt = _targets()
+    kw = dict(blocks=BLOCKS, nfe=6, mode=MaskMode.GLOBAL, seed=3)
+    implicit = regenerate(StubDenoiser(0.2), z0, _ids(), tgt, **kw)
+    explicit = regenerate(StubDenoiser(0.2), z0, _ids(), tgt,
+                          erase=torch.nn.functional.one_hot(tgt, BLOCKS).bool(),
+                          **kw)
+    assert torch.equal(implicit, explicit)
+
+
+def test_erasing_a_set_writes_every_member_and_nothing_else() -> None:
+    """Regime B erases a SUBSET; the eval path has to be able to match it.
+
+    Mean |S| in training is 2.24 with only 30.5% of steps at |S| = 1, so a sweep
+    over subset size is what separates a pathway specialised to the wrong |S|
+    from one that is simply broken.
+    """
+    z0 = torch.randn(BATCH, N, D)
+    tgt = _targets()
+    erase = torch.nn.functional.one_hot(tgt, BLOCKS).bool()
+    erase[:, 1] = True                      # a second member for every example
+    out = regenerate(StubDenoiser(0.4), z0, _ids(), tgt, BLOCKS, 8,
+                     MaskMode.GLOBAL, seed=5, erase=erase)
+    for i in range(BATCH):
+        for b in range(BLOCKS):
+            lo, hi = b * K, (b + 1) * K
+            changed = not torch.equal(out[i, lo:hi], z0[i, lo:hi])
+            assert changed == bool(erase[i, b]), f"example {i}, block {b}"
+
+
+def test_the_scored_block_must_be_inside_the_erase_set() -> None:
+    """Scoring a block that was never regenerated would silently measure the VAE
+    round-trip and report it as a repair rate."""
+    tgt = _targets()
+    erase = torch.zeros(BATCH, BLOCKS, dtype=torch.bool)
+    erase[:, 0] = True                      # misses targets 2, 4 and 1
+    with pytest.raises(ValueError):
+        regenerate(StubDenoiser(), torch.randn(BATCH, N, D), _ids(), tgt,
+                   BLOCKS, 4, MaskMode.GLOBAL, seed=1, erase=erase)
