@@ -95,6 +95,34 @@ class Repair:
     texts: list[list[str]]   # decoded trace per example, raw
 
 
+def shielded_mask(block_ids: torch.Tensor, block: int, mode: MaskMode) -> torch.Tensor:
+    """`mode`'s mask, but nothing outside `block` may attend TO `block`.
+
+    Isolates the two things that differ between the causal and global arms, which
+    the design conflated:
+
+      1. the ERASED block reads downstream context   <- the mechanism under test
+      2. the CONTEXT blocks read the erased block    <- a side effect nobody asked for
+
+    (2) is not symmetric between the arms. Under CAUSAL only blocks *after* the
+    target can read it, so when the target is the root, nothing does. Under GLOBAL
+    every block reads it — and it holds pure noise at t = 1. So global's clean
+    context is computed with the erasure's noise mixed in and causal's is not, at
+    every layer above the first. That is a difference between the conditions with
+    nothing to do with downstream evidence.
+
+    Shielding keeps (1) and removes (2). Read the gap under this mask against the
+    gap under the plain one: what survives is the mechanism.
+
+    Single [N, N], so it is valid only where `block` is the same for every example
+    in the batch. Asserted by the caller rather than silently broadcast.
+    """
+    mask = build_mask(block_ids, mode).clone()
+    is_target = block_ids == block
+    mask[~is_target.unsqueeze(1) & is_target.unsqueeze(0)] = False
+    return mask
+
+
 def revision_mask(block_ids: torch.Tensor, block: int, mode: MaskMode) -> torch.Tensor:
     """The [N, N] mask a revision pass attends under.
 
@@ -125,6 +153,7 @@ def regenerate(
     eta: float = 1.0,
     shift: float = 1.0,
     seed: int | None = None,
+    mask: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Erase `target_block` in each example and regenerate it. Returns [batch, N, D].
 
@@ -141,6 +170,9 @@ def regenerate(
         seed: set to make the erasure noise identical across conditions. The
             paired comparison depends on it — `causal` and `global` must face the
             same noise or the difference between them includes a noise draw.
+        mask: override the [N, N] mask. `mode` still conditions the model, so this
+            is for diagnostics that hold the conditioning fixed while changing what
+            is visible — see `shielded_mask`.
     """
     device = latents.device
     batch, n_positions, _ = latents.shape
@@ -154,7 +186,8 @@ def regenerate(
         .repeat_interleave(k, dim=1).unsqueeze(-1)
     )
     z = torch.where(is_target, torch.randn_like(latents), latents)
-    mask = revision_mask(block_ids, 0, mode)
+    if mask is None:
+        mask = revision_mask(block_ids, 0, mode)
     knots = schedule(nfe, shift, device=device)
 
     for i in range(nfe):
