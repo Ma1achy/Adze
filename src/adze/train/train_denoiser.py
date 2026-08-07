@@ -238,6 +238,30 @@ def regime_a_loss(model: Denoiser, batch: dict[str, torch.Tensor], block_ids: to
     return masked_mean((pred - batch["target"]) ** 2, batch["loss_mask"])
 
 
+def resolve_b_prob(configured: float, override: float | None,
+                   mixed: bool) -> float:
+    """The regime-B share this run will actually use.
+
+    A CLI override, not a config edit — same pattern as --batch / --lr /
+    --denoiser-layers. M7's crossing table showed the model is specialised to
+    whichever configuration it saw most, so this share is the knob under test
+    rather than a constant inherited from DiD.
+
+    Validated at the TOP of training rather than where it is first used: the gate
+    runs first and costs 6000 steps, and a rejected argument should not cost them.
+    """
+    if not mixed:
+        return 0.0
+    b_prob = configured if override is None else override
+    if not 0.0 < b_prob <= 1.0:
+        raise ValueError(
+            f"regime_b_prob must be in (0, 1], got {b_prob}. A share of 0 with "
+            f"--mixed trains regime A only while claiming otherwise; drop "
+            f"--mixed instead."
+        )
+    return b_prob
+
+
 def train_denoiser(
     config_path: Path,
     mixed: bool = False,
@@ -251,6 +275,7 @@ def train_denoiser(
     vectorised: bool = True,
     zero_prefix: bool = False,
     n_layers: int | None = None,
+    regime_b_prob: float | None = None,
 ) -> dict[str, float]:
     """Args:
         config_path: yaml config.
@@ -287,6 +312,8 @@ def train_denoiser(
             overwrite the 2-layer one it is being compared against.
     """
     config = load_config(config_path)
+    # Before the gate, which costs 6000 steps.
+    b_prob = resolve_b_prob(config.train.regime_b_prob, regime_b_prob, mixed)
     torch.manual_seed(seed)
     device = torch.device(config.device)
 
@@ -381,7 +408,10 @@ def train_denoiser(
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=n_steps)
 
     print()
-    b_prob = config.train.regime_b_prob if mixed else 0.0
+    # A CLI override, not a config edit — same pattern as --batch / --lr /
+    # --denoiser-layers. M7's crossing table showed the model is specialised to
+    # whichever configuration it saw most, so this share is the knob under test
+    # rather than a fixed constant inherited from DiD.
     label = (f"regime A + B mix ({1 - b_prob:.0%}/{b_prob:.0%})" if mixed
              else "regime A training")
     print(f"{label} — {n_steps} steps, batch {n_batch}, lr {n_lr}")
@@ -424,6 +454,13 @@ def train_denoiser(
             print(f"  step {step:>6}  loss {loss.item():.6f}  block {note}{extra}")
 
     print(f"\ntrained in {time.perf_counter() - t0:.1f}s")
+    if mixed:
+        # The REALISED share, not the requested one. The mix is a per-step
+        # Bernoulli draw, so they differ, and the realised share is what the model
+        # actually saw — which is the number any comparison across mixes rests on.
+        print(f"regime B      {n_b_steps}/{n_steps} steps "
+              f"({n_b_steps / n_steps:.1%} realised, {b_prob:.0%} requested)")
+        print(f"regime A      {n_steps - n_b_steps} steps")
 
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     # The shift goes in the filename: a sweep over shifts would otherwise
@@ -433,7 +470,10 @@ def train_denoiser(
     suffix += "" if seed == 0 else f"_seed{seed}"
     suffix += "_zeroprefix" if zero_prefix else ""
     suffix += "" if n_layers is None else f"_L{depth}"
-    suffix += "_mixed" if mixed else ""
+    # The mix share goes in the filename for the same reason the shift and the
+    # layer count do: a sweep over it would otherwise overwrite its own earlier
+    # arms, and the comparison needs all of them.
+    suffix += f"_mixedP{round(b_prob * 100)}" if mixed else ""
     ckpt = CHECKPOINT_DIR / f"denoiser_{config.name}_d{latents.shape[-1]}{suffix}.pt"
     torch.save(
         {
@@ -451,6 +491,19 @@ def train_denoiser(
             "t_shift": t_shift,
             "zero_prefix": zero_prefix,
             "mixed": mixed,
+            # THE TRAINING RECIPE, recorded. `denoiser_cap100_d16_L4_mixed.pt`
+            # saved none of this, so nothing could be compared against it without
+            # guessing at its batch size, learning rate and step count — which
+            # cost a retrain of the reference arm. The same lesson as `arch`:
+            # a checkpoint that does not record how it was made cannot be a
+            # baseline for anything.
+            "regime_b_prob": b_prob,
+            "regime_b_steps": n_b_steps,
+            "steps": n_steps,
+            "batch_size": n_batch,
+            "lr": n_lr,
+            "seed": seed,
+            "vectorised": vectorised,
         },
         ckpt,
     )
@@ -476,6 +529,9 @@ def main() -> None:
     p.add_argument("--lr", type=float, default=None)
     p.add_argument("--denoiser-layers", type=int, default=None,
                    help="override denoiser depth; checkpoint is suffixed _L{n}")
+    p.add_argument("--regime-b-prob", type=float, default=None,
+                   help="override config.train.regime_b_prob. The knob M7's "
+                        "crossing table pointed at; goes in the checkpoint name")
     p.add_argument("--mixed", action="store_true",
                    help="M6: mix regime B (refine) in at config.train.regime_b_prob")
     args = p.parse_args()
@@ -483,7 +539,7 @@ def main() -> None:
                    latent_dim=args.latent_dim, seed=args.seed, t_shift=args.t_shift,
                    batch_size=args.batch, lr=args.lr, vectorised=not args.naive,
                    zero_prefix=args.zero_prefix, n_layers=args.denoiser_layers,
-                   mixed=args.mixed)
+                   mixed=args.mixed, regime_b_prob=args.regime_b_prob)
 
 
 if __name__ == "__main__":
