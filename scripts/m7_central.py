@@ -89,6 +89,11 @@ def main() -> None:
     p.add_argument("--eta", type=float, default=1.0)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--corrupt", choices=sorted(CONSTRUCTORS), default="early")
+    p.add_argument("--spread-index", action="store_true",
+                   help="corrupt a UNIFORM index rather than preferring early. A "
+                        "pin still exists, but prefix length now ranges over 0..B-2 "
+                        "instead of 0..2 — which is what makes a slope in prefix "
+                        "length measurable rather than resting on three cells")
     p.add_argument("--full-length-only", action="store_true",
                    help="keep only n_steps == B — pad-free, no softmax confound")
     p.add_argument("--require-provenance", choices=["both-leaves", "one-leaf",
@@ -114,7 +119,9 @@ def main() -> None:
     pool, pairs = args.traces * 2, []
     while True:
         traces = generate_dataset(n=pool, seed=config.data.seed + 909_091, **tkw)
-        candidates = [build(t, rng_seed=i) for i, t in enumerate(traces)
+        kw = {"prefer_early": False} if (args.spread_index
+                                         and args.corrupt == "early") else {}
+        candidates = [build(t, rng_seed=i, **kw) for i, t in enumerate(traces)
                       if len(t.steps) >= 2]
         pairs = select(candidates, blocks, args.traces,
                        args.full_length_only, args.require_provenance)
@@ -151,6 +158,7 @@ def main() -> None:
     assert len(items) == len(pairs)
 
     selector = ("full-length-only " if args.full_length_only else "") + (
+        "spread-index " if args.spread_index else "") + (
         args.require_provenance or "")
     print(f"denoiser      {args.denoiser}  {arch['n_layers']}L x {arch['d_model']}w")
     print(f"vae           {args.vae}")
@@ -281,6 +289,7 @@ def main() -> None:
         args.out.write_text(json.dumps({
             "corrupt": args.corrupt,
             "targeted": selector.strip() or None,
+            "spread_index": args.spread_index,
             "denoiser": str(args.denoiser),
             "vae": str(args.vae),
             "blocks": blocks,
