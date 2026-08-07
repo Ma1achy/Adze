@@ -45,7 +45,11 @@ from pathlib import Path
 
 from adze.eval.strata import cell
 
-SEED_SPREAD = 0.0062      # sample sd of the raw effect over six seeds
+# The six-seed reference distribution for the raw effect at this configuration.
+# An arm is judged against the DISTRIBUTION, not against seed 0 — seed 0 is the
+# highest of the six (+3.45%) so differencing against it overstates every drop.
+SEED_MEAN, SEED_SPREAD = 0.0251, 0.0062
+SEED_RANGE = (0.0150, 0.0345)
 MIN_CELL = 100            # below this a per-block rate is not worth printing
 
 
@@ -121,15 +125,19 @@ def main() -> None:
         print(f"  {s['label']:>22} {gs:>13} {cs:>13} {s['effect']:>+9.2%} "
               f"{s['glob']:>11.2%}")
 
-    if len(summary) > 1:
-        base = summary[0]
-        print(f"\n  Differences against {base['label']}, judged against the six-seed")
-        print(f"  spread of +/- {SEED_SPREAD:.2%} on the aggregate effect:")
-        for s in summary[1:]:
-            d = s["effect"] - base["effect"]
-            verdict = ("SCATTER — below ~2 sd, do not report as a difference"
-                       if abs(d) < 2 * SEED_SPREAD else "EXCEEDS the seed spread")
-            print(f"    {s['label']:>22}  effect {d:>+7.2%}   {verdict}")
+    print(f"\n  Judged against the SIX-SEED reference distribution for this")
+    print(f"  configuration: {SEED_MEAN:+.2%} +/- {SEED_SPREAD:.2%}, "
+          f"observed range {SEED_RANGE[0]:+.2%} to {SEED_RANGE[1]:+.2%}.")
+    for s in summary:
+        z = (s["effect"] - SEED_MEAN) / SEED_SPREAD
+        if abs(z) < 2:
+            verdict = "SCATTER — inside the seed distribution"
+        elif SEED_RANGE[0] <= s["effect"] <= SEED_RANGE[1]:
+            verdict = "outside 2 sd but inside the observed range"
+        else:
+            verdict = "OUTSIDE the observed seed range"
+        print(f"    {s['label']:>22}  effect {s['effect']:>+7.2%}  "
+              f"z {z:>+5.2f}   {verdict}")
     print()
     print("  The aggregate is context. The claim is whether GLOBAL'S SLOPE in")
     print("  prefix length turns positive — currently it is flat while causal's")
