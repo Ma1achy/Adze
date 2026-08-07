@@ -239,5 +239,66 @@ def test_random_damages_the_prefix_and_the_structured_arms_do_not() -> None:
 
 
 def test_an_unknown_structure_is_rejected() -> None:
+    # NOT "suffix" — that was the invalid name when this test was written, on the
+    # reasoning that erasing the suffix removes the pin. It does, and that turned
+    # out to be the point of a later experiment, so it is a real structure now.
     with pytest.raises(ValueError):
-        sample_subset_structured(_bm([4, 4]), structure="suffix")
+        sample_subset_structured(_bm([4, 4]), structure="every-other-block")
+
+
+def test_suffix_erases_to_the_end_and_always_leaves_a_prefix() -> None:
+    """Suffix erasure removes the PIN — everything after b is gone — while
+    leaving blocks < b clean, so the prefix is the only remaining route.
+
+    b never reaches 0: erasing from block 0 leaves neither prefix nor pin and
+    would train reconstruction from nothing.
+    """
+    torch.manual_seed(7)
+    mask = _bm([3, 4, 5, 6, 7] * 60)
+    sel = sample_subset_structured(mask, structure="suffix")
+    for row, real in zip(sel, mask):
+        idx = row.nonzero().flatten()
+        assert len(idx) >= 1
+        n_real = int(real.sum())
+        assert int(idx[-1]) == n_real - 1, "must run to the last real block"
+        assert torch.equal(idx, torch.arange(int(idx[0]), n_real))
+        assert int(idx[0]) >= 1, "a clean prefix block must survive"
+        assert not (row & ~real).any()
+
+
+def test_suffix_erasure_leaves_no_consumer_for_any_erased_block() -> None:
+    """The property the arm exists for, checked through provenance.
+
+    Every consumer of an erased block lies strictly after it, so a suffix
+    erasure guarantees the consumer is erased too. Pin availability must be 0.
+    """
+    from adze.config import load_config, trace_kwargs
+    from adze.data.generate import generate_dataset
+    from adze.eval.strata import consumers
+
+    cfg = load_config("configs/debug.yaml")
+    traces = [t for t in generate_dataset(n=300, seed=5, **trace_kwargs(cfg))
+              if len(t.steps) <= 7]
+    mask = torch.zeros(len(traces), 7, dtype=torch.bool)
+    for i, t in enumerate(traces):
+        mask[i, :len(t.steps)] = True
+
+    torch.manual_seed(8)
+    sel = sample_subset_structured(mask, structure="suffix")
+    for i, t in enumerate(traces):
+        for b in sel[i].nonzero().flatten().tolist():
+            for c in consumers(t, b):
+                assert sel[i, c], f"trace {i} block {b} kept a consumer at {c}"
+
+
+def test_pinmix_is_about_half_suffix() -> None:
+    """The split is what the report states, so it has to be what the code does."""
+    torch.manual_seed(9)
+    mask = _bm([3, 4, 5, 6, 7] * 200)
+    sel = sample_subset_structured(mask, structure="pinmix")
+    n_real = mask.sum(dim=1)
+    is_suffix = torch.tensor([
+        bool(row.nonzero().flatten()[-1] == n - 1) and bool(row.sum() == n - int(row.nonzero().flatten()[0]))
+        for row, n in zip(sel, n_real.tolist())
+    ])
+    assert 0.40 < is_suffix.float().mean() < 0.75

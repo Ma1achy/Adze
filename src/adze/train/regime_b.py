@@ -44,7 +44,7 @@ from adze.model.masks import build_mask
 from adze.pad import masked_mean
 
 
-STRUCTURES = ("random", "single", "contiguous")
+STRUCTURES = ("random", "single", "contiguous", "suffix", "pinmix")
 
 
 def sample_subset_structured(
@@ -99,6 +99,8 @@ def sample_subset_structured(
         raise ValueError(f"structure must be one of {STRUCTURES}, got {structure!r}")
     if structure == "random":
         return sample_subset(block_mask, p=p, generator=generator)
+    if structure in ("suffix", "pinmix"):
+        return _suffix_or_mix(block_mask, structure, p, generator)
 
     batch, blocks = block_mask.shape
     device = block_mask.device
@@ -120,6 +122,44 @@ def sample_subset_structured(
     idx = torch.arange(blocks, device=device).unsqueeze(0)          # [1, B]
     selected = (idx >= start.unsqueeze(1)) & (idx < (start + sizes).unsqueeze(1))
     return selected & block_mask
+
+
+def _suffix_or_mix(block_mask, structure, p, generator):
+    """`suffix` erases b..end; `pinmix` is half interior, half suffix.
+
+    THE POINT OF SUFFIX ERASURE. With everything after `b` gone, the downstream
+    consumer that states block b's result exactly no longer exists, so the clean
+    PREFIX is the only route to it. The pin is a lookup; the prefix requires
+    recomputation. If the model ignores the prefix because the lookup is easier
+    whenever both are available, removing the lookup for half of regime B should
+    force the harder route to be learned.
+
+    `b` is drawn from 1..n_real-1, never 0: erasing from block 0 leaves neither a
+    prefix nor a pin, which trains reconstruction from nothing.
+
+    NOTE, measured before this existed: the `random` baseline ALREADY has no pin
+    on 59.5% of erased blocks, because a block's consumer is frequently erased
+    alongside it. So this is not "adding a pin-free condition that did not exist"
+    — it is making pin-absence structural and total rather than incidental and
+    partial, and removing the indirect downstream constraint that survives when
+    only the direct consumer is erased.
+    """
+    batch, blocks = block_mask.shape
+    device = block_mask.device
+    n_real = block_mask.sum(dim=1)
+
+    start = 1 + (torch.rand(batch, generator=generator, device=device)
+                 * (n_real - 1).clamp(min=1)).long()
+    start = torch.min(start, (n_real - 1).clamp(min=0))
+    idx = torch.arange(blocks, device=device).unsqueeze(0)
+    suffix = (idx >= start.unsqueeze(1)) & block_mask
+
+    if structure == "suffix":
+        return suffix
+
+    interior = sample_subset(block_mask, p=p, generator=generator)
+    take_suffix = (torch.rand(batch, generator=generator, device=device) < 0.5)
+    return torch.where(take_suffix.unsqueeze(1), suffix, interior)
 
 
 def sample_subset(

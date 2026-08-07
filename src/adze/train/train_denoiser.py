@@ -538,7 +538,7 @@ def main() -> None:
     p.add_argument("--lr", type=float, default=None)
     p.add_argument("--denoiser-layers", type=int, default=None,
                    help="override denoiser depth; checkpoint is suffixed _L{n}")
-    p.add_argument("--b-structure", choices=["random", "single", "contiguous"],
+    p.add_argument("--b-structure", choices=["random", "single", "contiguous", "suffix", "pinmix"],
                    default="random",
                    help="regime B erasure SHAPE. `random` damages the prefix on a "
                         "typical step; `single` and `contiguous` leave it clean")
