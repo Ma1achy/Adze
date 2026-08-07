@@ -87,11 +87,13 @@ all the variance. Three qualifications, stated rather than buried:
    corr(handicap, effect) = +0.21 and sd(recalibrated)/sd(raw) = 1.10 — it
    slightly *increases* variance. Subtraction only reduces variance when corr >
    sd(handicap)/(2·sd(effect)) = 0.355, and 0.21 is below it.
-3. **One configuration.** All six seeds share p=0.50, 20k steps, 4L×128. A
-   four-point sweep over the regime A/B mix was run and **withdrawn**: its whole
-   range (+1.9 / +3.5 / +2.3) lies inside this seed distribution's ±1σ band, so it
-   could not be distinguished from scatter. Regime B's cost at matched compute is
-   small and separately measured — 1.5pp of draft quality.
+3. **One configuration.** All six seeds share p=0.50, 20k steps, 4L×128. A sweep
+   over the regime A/B mix was run and **withdrawn**: the two points independent
+   of this distribution, p=0.10 (+1.9pp, −0.98σ) and p=0.75 (+2.3pp, −0.34σ), both
+   fall inside it, so the sweep could not be distinguished from scatter. Its
+   p=0.50 point is seed 0 itself and so carries no evidence either way. Regime B's
+   cost at matched compute is small and separately measured — 1.5pp of draft
+   quality.
 
 ## Settled, provisional, and weak
 
