@@ -32,6 +32,7 @@ from adze.data.dataset import LatentCache
 from adze.data.generate import generate_dataset
 from adze.data.tokeniser import CharTokeniser
 from adze.eval.checks import unseen_ceiling_by_magnitude
+from adze.eval.draft_quality import sample_draft
 from adze.eval.load import load_denoiser, load_vae
 from adze.eval.readout import print_readout, readout
 from adze.sample.draft import draft
@@ -45,16 +46,7 @@ NFE_VALUES = [8, 16, 32, 64, 100, 150, 200, 300]
 SATURATION_GAIN = 0.01
 
 
-@torch.no_grad()
-def sample(denoiser, vae, tokeniser, arch, scale, nfe, eta, samples, device, seed):
-    torch.manual_seed(seed)
-    blocks = arch["blocks"]
-    latents = draft(
-        denoiser, None, blocks, arch["latents_per_block"], arch["latent_dim"], nfe,
-        device=str(device), batch=samples, eta=eta,
-    )
-    per = (latents * scale).view(samples * blocks, arch["latents_per_block"], -1)
-    return [tokeniser.decode(r) for r in vae.decoder(per).argmax(dim=-1)]
+sample = sample_draft   # promoted to adze.eval.draft_quality; one sampler, shared
 
 
 def main() -> None:
