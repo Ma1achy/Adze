@@ -19,6 +19,7 @@ from adze.train.regime_b import (
     regime_b_batch,
     regime_b_loss,
     sample_subset,
+    sample_subset_structured,
 )
 
 BATCH, BLOCKS, K, D = 6, 5, 4, 8
@@ -159,3 +160,84 @@ def test_subset_varies_across_examples() -> None:
     torch.manual_seed(6)
     sel = sample_subset(torch.ones(128, BLOCKS, dtype=torch.bool), p=0.5)
     assert len({tuple(row.tolist()) for row in sel}) > 1
+
+
+# --- erasure STRUCTURE ------------------------------------------------------
+#
+# M7 found the two arms exploit disjoint sources: global's accuracy is flat in
+# prefix length while causal's climbs with it. The candidate cause is here —
+# `random` erases mean |S| = 2.24 of ~4.4 real blocks, so roughly half the prefix
+# is itself erased on a typical refine step and a reliable clean-prefix mapping
+# never exists to be learned.
+
+
+def _bm(rows: list[int]) -> torch.Tensor:
+    m = torch.zeros(len(rows), BLOCKS, dtype=torch.bool)
+    for i, n in enumerate(rows):
+        m[i, :n] = True
+    return m
+
+
+def test_single_erases_exactly_one_real_block() -> None:
+    """`single` matches M7's inference condition exactly."""
+    torch.manual_seed(0)
+    mask = _bm([3, 4, 5, 5, 7, 2] * 20)
+    sel = sample_subset_structured(mask, structure="single")
+    assert (sel.sum(dim=1) == 1).all()
+    assert not (sel & ~mask).any()
+
+
+def test_contiguous_erases_a_run_and_leaves_prefix_and_pin_clean() -> None:
+    """THE PROPERTY THE ARM EXISTS FOR.
+
+    Everything before the run is clean, so the prefix is reliable; everything
+    after it is clean, so the downstream pin survives. `random` gives neither.
+    """
+    torch.manual_seed(1)
+    mask = _bm([3, 4, 5, 6, 7] * 40)
+    sel = sample_subset_structured(mask, structure="contiguous")
+    for row, real in zip(sel, mask):
+        idx = row.nonzero().flatten()
+        assert len(idx) >= 1
+        # A single run: the selected indices are consecutive.
+        assert torch.equal(idx, torch.arange(int(idx[0]), int(idx[-1]) + 1))
+        # And it stays inside the real blocks.
+        assert bool(real[idx].all())
+
+
+def test_contiguous_matches_randoms_size_distribution() -> None:
+    """The two arms must differ in SHAPE, not in how much is erased — otherwise
+    a difference between them is a difference in erasure volume."""
+    torch.manual_seed(2)
+    mask = _bm([3, 4, 5, 6, 7] * 400)
+    a = sample_subset_structured(mask, structure="random").sum(dim=1).float().mean()
+    b = sample_subset_structured(mask, structure="contiguous").sum(dim=1).float().mean()
+    assert abs(float(a) - float(b)) < 0.15, f"random {a:.2f} vs contiguous {b:.2f}"
+
+
+def test_random_damages_the_prefix_and_the_structured_arms_do_not() -> None:
+    """States the mechanism under test as an assertion.
+
+    'Prefix damaged' = at least one CLEAN-side hole, i.e. an unselected real block
+    sitting between selected ones. That is the thing a model cannot learn to rely
+    on.
+    """
+    torch.manual_seed(3)
+    mask = _bm([5, 6, 7] * 200)
+
+    def holed(sel):
+        out = 0
+        for row in sel:
+            idx = row.nonzero().flatten()
+            if len(idx) > 1 and int(idx[-1]) - int(idx[0]) + 1 != len(idx):
+                out += 1
+        return out / len(sel)
+
+    assert holed(sample_subset_structured(mask, structure="random")) > 0.3
+    assert holed(sample_subset_structured(mask, structure="contiguous")) == 0.0
+    assert holed(sample_subset_structured(mask, structure="single")) == 0.0
+
+
+def test_an_unknown_structure_is_rejected() -> None:
+    with pytest.raises(ValueError):
+        sample_subset_structured(_bm([4, 4]), structure="suffix")

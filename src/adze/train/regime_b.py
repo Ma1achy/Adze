@@ -44,6 +44,84 @@ from adze.model.masks import build_mask
 from adze.pad import masked_mean
 
 
+STRUCTURES = ("random", "single", "contiguous")
+
+
+def sample_subset_structured(
+    block_mask: torch.Tensor,
+    structure: str = "random",
+    p: float = 0.5,
+    generator: torch.Generator | None = None,
+) -> torch.Tensor:
+    """Choose which blocks to erase, under a given SUBSET STRUCTURE.
+
+    ## Why the structure matters
+
+    M7 measured that the two arms exploit disjoint information sources. Causal's
+    accuracy climbs with prefix length (1.3% -> 7.8%) and ignores downstream
+    evidence; global's is set by whether downstream evidence exists (~3-5% with,
+    ~1% without) and is FLAT in prefix length. Global does not use the prefix at
+    all, even where the prefix is informative.
+
+    The candidate cause is in this function. Under `random`, each real block is
+    erased independently at p = 0.5, so mean |S| = 2.24 out of ~4.4 real blocks —
+    **roughly half the prefix is itself erased on a typical refine step.** A model
+    trained that way never sees a reliable clean-prefix-to-erased-block mapping,
+    so learning not to depend on one is the correct response to its training
+    distribution.
+
+    ## The three structures, and what each preserves
+
+    | structure | prefix (blocks < min S) | pin (blocks > max S) | |S| |
+    |---|---|---|---|
+    | `random` | damaged — holes throughout | damaged | Binom(n, 0.5) |
+    | `single` | clean | clean | 1 |
+    | `contiguous` | clean | clean | Binom(n, 0.5) |
+
+    `single` matches M7's inference condition exactly. `contiguous` erases a run
+    `b .. b+k-1`, so everything before `b` is clean and reliable and everything
+    after `b+k-1` is clean and still carries the pin — both sources intact at
+    |S| > 1. Together they separate "small |S| matches inference" from "structured
+    erasure makes the prefix reliable".
+
+    A contiguous SUFFIX would be the wrong test and is deliberately not offered:
+    erasing everything after `b` removes the downstream evidence, which is the
+    very thing the global arm depends on. It would test the opposite hypothesis.
+
+    Args:
+        block_mask: [batch, B] bool, True where the block is real.
+        structure: one of STRUCTURES.
+        p: per-block selection probability, and the size distribution for
+           `contiguous` — kept identical to `random`'s so the two differ in
+           SHAPE only, not in how much is erased.
+    """
+    if structure not in STRUCTURES:
+        raise ValueError(f"structure must be one of {STRUCTURES}, got {structure!r}")
+    if structure == "random":
+        return sample_subset(block_mask, p=p, generator=generator)
+
+    batch, blocks = block_mask.shape
+    device = block_mask.device
+    n_real = block_mask.sum(dim=1)                                  # [batch]
+
+    if structure == "single":
+        sizes = torch.ones(batch, dtype=torch.long, device=device)
+    else:
+        # Same size distribution as `random`: Binomial(n_real, p), floored at 1.
+        draw = torch.rand(block_mask.shape, generator=generator, device=device)
+        sizes = ((draw < p) & block_mask).sum(dim=1).clamp(min=1)
+
+    # Uniform start among the runs that fit inside the real blocks. Real blocks
+    # are a prefix 0..n_real-1, so a run of length s fits at starts 0..n_real-s.
+    span = (n_real - sizes + 1).clamp(min=1)
+    start = (torch.rand(batch, generator=generator, device=device) * span).long()
+    start = torch.min(start, span - 1)
+
+    idx = torch.arange(blocks, device=device).unsqueeze(0)          # [1, B]
+    selected = (idx >= start.unsqueeze(1)) & (idx < (start + sizes).unsqueeze(1))
+    return selected & block_mask
+
+
 def sample_subset(
     block_mask: torch.Tensor,
     p: float = 0.5,
@@ -86,6 +164,7 @@ def regime_b_batch(
     generator: torch.Generator | None = None,
     eps: torch.Tensor | None = None,
     selected: torch.Tensor | None = None,
+    structure: str = "random",
 ) -> dict[str, torch.Tensor]:
     """Build one regime B (refine) training batch.
 
@@ -110,7 +189,8 @@ def regime_b_batch(
     if block_mask is None:
         block_mask = torch.ones(batch, blocks, dtype=torch.bool, device=device)
     if selected is None:
-        selected = sample_subset(block_mask, p=p, generator=generator)
+        selected = sample_subset_structured(
+            block_mask, structure=structure, p=p, generator=generator)
     if eps is None:
         eps = torch.randn(z0.shape, generator=generator, device=device)
 

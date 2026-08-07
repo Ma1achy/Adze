@@ -276,6 +276,7 @@ def train_denoiser(
     zero_prefix: bool = False,
     n_layers: int | None = None,
     regime_b_prob: float | None = None,
+    b_structure: str = "random",
     tag: str | None = None,
 ) -> dict[str, float]:
     """Args:
@@ -428,6 +429,7 @@ def train_denoiser(
             n_b_steps += 1
             batch = regime_b_batch(
                 latents[idx], block_ids, blocks, block_mask=block_mask[idx],
+                structure=b_structure,
             )
             loss = regime_b_loss(model, batch, block_ids)
         elif vectorised:
@@ -478,6 +480,7 @@ def train_denoiser(
     # Distinguishes otherwise-identical runs WITHOUT touching a knob that
     # changes the run. Borrowing --seed for this cost a confound once:
     # matched-A differed from its comparison in step count AND seed.
+    suffix += "" if b_structure == "random" else f"_S{b_structure}"
     suffix += "" if tag is None else f"_{tag}"
     ckpt = CHECKPOINT_DIR / f"denoiser_{config.name}_d{latents.shape[-1]}{suffix}.pt"
     torch.save(
@@ -503,6 +506,7 @@ def train_denoiser(
             # a checkpoint that does not record how it was made cannot be a
             # baseline for anything.
             "regime_b_prob": b_prob,
+            "b_structure": b_structure,
             "regime_b_steps": n_b_steps,
             "steps": n_steps,
             "batch_size": n_batch,
@@ -534,6 +538,10 @@ def main() -> None:
     p.add_argument("--lr", type=float, default=None)
     p.add_argument("--denoiser-layers", type=int, default=None,
                    help="override denoiser depth; checkpoint is suffixed _L{n}")
+    p.add_argument("--b-structure", choices=["random", "single", "contiguous"],
+                   default="random",
+                   help="regime B erasure SHAPE. `random` damages the prefix on a "
+                        "typical step; `single` and `contiguous` leave it clean")
     p.add_argument("--tag", type=str, default=None,
                    help="arbitrary suffix to distinguish otherwise-identical runs. "
                         "Use this rather than --seed to avoid a checkpoint-name "
@@ -550,7 +558,7 @@ def main() -> None:
                    batch_size=args.batch, lr=args.lr, vectorised=not args.naive,
                    zero_prefix=args.zero_prefix, n_layers=args.denoiser_layers,
                    mixed=args.mixed, regime_b_prob=args.regime_b_prob,
-                   tag=args.tag)
+                   b_structure=args.b_structure, tag=args.tag)
 
 
 if __name__ == "__main__":
