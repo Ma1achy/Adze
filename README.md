@@ -49,42 +49,49 @@ Four supporting stratifications, **all predicted before the data**:
   the softmax-normalisation confound is not producing it.
 - **chance** — measured as a permutation null: RESULT 0.6–0.7%, operands 0.0%.
 
-## The effect size, with all three qualifications
+## The effect size, with its spread
 
-**Raw measured: +2.3pp. Recalibrated: +4.8pp. Single seed.**
+> **+2.5pp ± 0.6pp raw. +4.4pp ± 0.7pp recalibrated. Six seeds, one configuration,
+> against a permutation chance rate of 0.6pp, under oracle block selection.**
 
-Every one of those needs its qualification stated rather than buried:
+| seed | causal | global | effect | handicap | recalibrated |
+|---|---|---|---|---|---|
+| 0 | 1.1% | 4.6% | +3.45% | −2.25% | +5.70% |
+| 1 | 0.9% | 2.4% | +1.50% | −2.50% | +4.00% |
+| 2 | 0.9% | 3.2% | +2.35% | −1.70% | +4.05% |
+| 3 | 1.2% | 3.8% | +2.55% | −1.65% | +4.20% |
+| 4 | 1.0% | 3.6% | +2.60% | −1.30% | +3.90% |
+| 5 | 1.1% | 3.7% | +2.60% | −2.10% | +4.70% |
 
-1. **+2.3pp is what was measured** — 2000 held-out corrupted traces, oracle block
-   selection (the corrupted index is known and erased, so this is an *upper
-   bound* on what uncertainty-steered selection could achieve).
-2. **+4.8pp assumes the handicap is additive.** The global arm carries a
-   condition-level penalty that has nothing to do with downstream evidence: it
-   is −2.5pp in the no-pin null. Diagnosed, not assumed — shielding the erased
-   block from its own context changes nothing, and crossing conditioning against
-   mask shows either departure from the training configuration costs ~5pp alone
-   and both together cost no more. Subtracting it gives +4.8pp, and a second
-   independent estimate from the redirected pin gives +4.4pp.
+All six positive, minimum +1.50pp. Causal is stable at 0.9–1.2%; global carries
+all the variance. Three qualifications, stated rather than buried:
 
-   **A regime-mix sweep has since tested the additive assumption and it held
-   up.** Across a 5× change in refine-mode training exposure the handicap did not
-   move (−2.3 → −2.2) while the raw effect nearly doubled (+1.9 → +3.5): it
-   behaves as a constant penalty independent of the mechanism. It also scales
-   with trace length in a way that is near-identical across mixes — structural,
-   not trained. What it *is* turned out to be the reverse of the guess: global
-   sits flat at chance while causal climbs with more prefix, so it is a
-   prefix-exploitation deficit rather than an irrelevant-context penalty.
-3. **Seed spread is large, and is the binding limitation.** Two p=0.50 runs give
-   +3.5pp and +1.6pp raw. That spread is as wide as a four-point mix sweep's
-   entire range, so **no mix comparison in this repo is currently distinguishable
-   from scatter**. Multi-seed runs at a fixed mix are the next measurement, and
-   until they exist the effect size should be read as "a few points, direction
-   secure, magnitude not".
+1. **Oracle block selection.** The corrupted index is known and erased, so this is
+   an *upper bound* on what uncertainty-steered selection could achieve.
+2. **The recalibration is a fairness correction, and only that.** The global arm
+   carries a condition-level penalty unrelated to downstream evidence: −1.9pp ±
+   0.4pp measured where no pin exists. It is diagnosed rather than assumed —
+   shielding the erased block from its own context changes nothing, and crossing
+   conditioning against mask shows either departure from the training
+   configuration costs ~5pp alone and both together cost no more. It also survived
+   a direct test: across a 5× change in refine-mode training exposure it did not
+   move, so it behaves as a constant independent of the mechanism.
 
-   One encouraging detail: the same two runs give +5.7pp and +4.8pp *recalibrated*
-   — half the raw spread, because the handicap moved with the effect. If that
-   survives more seeds, the recalibrated figure is a lower-variance estimator and
-   not merely a fairer one.
+   What it *is* turned out to be the reverse of the obvious guess. Global's rate
+   is flat in prefix length while causal's climbs 1.3% → 7.8%, so it is not a
+   noise penalty from a wider receptive field — **global does not use the prefix
+   at all**, in either condition. The two arms exploit disjoint sources.
+
+   A tempting further claim is **withdrawn**: at n=2 the recalibration appeared to
+   halve the variance, which would have made it a control variate. At n=6,
+   corr(handicap, effect) = +0.21 and sd(recalibrated)/sd(raw) = 1.10 — it
+   slightly *increases* variance. Subtraction only reduces variance when corr >
+   sd(handicap)/(2·sd(effect)) = 0.355, and 0.21 is below it.
+3. **One configuration.** All six seeds share p=0.50, 20k steps, 4L×128. A
+   four-point sweep over the regime A/B mix was run and **withdrawn**: its whole
+   range (+1.9 / +3.5 / +2.3) lies inside this seed distribution's ±1σ band, so it
+   could not be distinguished from scatter. Regime B's cost at matched compute is
+   small and separately measured — 1.5pp of draft quality.
 
 ## Settled, provisional, and weak
 
@@ -94,17 +101,29 @@ it reverses direction when the downstream evidence is redirected. The harness is
 validated against a stub denoiser, the null is measured rather than assumed, and
 chance is a permutation null rather than an analytic guess.
 
-**Provisional.** The magnitude. The additivity assumption behind the recalibration
-has survived a direct test, but seed-to-seed spread on the raw effect is ±1pp or
-more and no configuration has been run at multiple seeds. Read the magnitude as
-"a few points" and nothing finer.
+**Settled, as of six seeds.** The magnitude, at this configuration: +2.5pp ± 0.6pp
+raw, +4.4pp ± 0.7pp recalibrated, every seed positive. It is not settled that this
+is the *best* configuration — one mix sweep was withdrawn for being inside seed
+noise — but the number itself now has a spread attached.
 
-**Weak, and under investigation.** Absolute performance. Global reconstructs the
-correct result on 3.6% of traces against a 0.7% chance rate — 5× chance, not 50×.
-The mechanism exists and is exploited poorly. Two suspects: the 9.7% regime-B
-training share (the mix sweep is testing this now), and the absence of question
-conditioning, without which nothing determines the operands and they sit at
-chance in every arm.
+**Weak, and now diagnosed.** Absolute performance. Global reconstructs the correct
+result on ~3.6% of traces against a 0.6% chance rate — about 6× chance, not 60×.
+The mechanism exists and is exploited poorly.
+
+The regime-B training share is **eliminated** as the cause: a 5× change in it left
+the handicap untouched. What the measurements point at instead is that **the two
+arms use disjoint information sources**. Causal's rate scales with prefix length
+and ignores downstream evidence; global's scales with downstream evidence and is
+flat in prefix length. Neither combines them, and an ideal refine mode would.
+
+A candidate mechanism sits in the training signal rather than in capacity: regime
+B erases a mean of 2.24 blocks from traces holding ~4.4, so roughly half the
+prefix is itself erased on a typical refine step and the model never sees a
+reliable clean-prefix-to-erased-block mapping. That points at changing *what*
+regime B erases rather than how often it fires. Untested.
+
+The other standing suspect is the absence of question conditioning, without which
+nothing determines the operands — and they sit at chance in every arm.
 
 Nothing here is snapped, filtered, retried or cleaned. A regenerated block that
 decodes to garbage is counted as garbage.
@@ -139,31 +158,32 @@ PYTHONPATH=src python3 -m adze.train.train_vae configs/debug.yaml \
 PYTHONPATH=src python3 scripts/build_cache.py \
     --checkpoint checkpoints/vae_cap100_d16.pt --n-train 60000
 
-# 3. Denoiser — 4 layers, 20k steps, the 90/10 regime A/B mix
+# 3. Denoiser — 4 layers, 20k steps, the headline configuration.
+#    --seed 0..5 gives the six runs the headline averages over.
 PYTHONPATH=src python3 -m adze.train.train_denoiser configs/debug.yaml \
     --steps 20000 --batch 256 --lr 1e-3 --denoiser-layers 4 \
-    --mixed --regime-b-prob 0.10
+    --mixed --regime-b-prob 0.50 --seed 0
 
-# 4. THE CENTRAL EXPERIMENT
-PYTHONPATH=src python3 scripts/m7_central.py --traces 500
+# 4. THE CENTRAL EXPERIMENT — effect and handicap
+PYTHONPATH=src python3 scripts/m7_central.py --corrupt early --traces 2000 \
+    --denoiser checkpoints/denoiser_cap100_d16_L4_mixedP50.pt --out runs/seed0_early.json
+PYTHONPATH=src python3 scripts/m7_central.py --corrupt final --traces 2000 \
+    --denoiser checkpoints/denoiser_cap100_d16_L4_mixedP50.pt --out runs/seed0_final.json
+
+# 5. The headline, once several seeds exist
+PYTHONPATH=src python3 scripts/m7_seeds.py runs/seed*_early.json
 ```
 
-**The reproduction gate.** Step 4 at `--traces 500` should print:
+**The reproduction gate.** A single seed should land inside the measured
+distribution — **effect +2.5pp ± 0.6pp, handicap −1.9pp ± 0.4pp** — with causal
+near 1.0% and global near 3.5%. Across the six recorded seeds the effect ranged
++1.50 to +3.45pp, so a single run landing anywhere in that band reproduces.
 
-```
-   condition    exact   RESULT  operands
-        none    19.6%    21.2%     86.6%
-      causal     0.2%     1.2%      1.8%
-      global     0.0%     4.0%      0.0%
-
-  GAP (global - causal)   RESULT +2.8%
-  PAIRED (McNemar) on RESULT: global-only 20, causal-only 6, chi2 = 6.50, p < 0.05
-```
-
-A fresh training run has its own seed-level drift, so read this as agreement
-within a spread rather than as an identity. If the two disagree by more than the
-effect being measured, nothing downstream is readable — and that, rather than the
-number, is what the gate is for.
+This is a distribution, not an identity. A run outside it by more than the effect
+itself means nothing downstream is readable, and that — rather than any particular
+number — is what the gate is for. Seed spread here is a quarter of the effect, so
+**do not compare two single-seed runs and conclude anything.** This repo did
+exactly that once and had to withdraw a four-point sweep.
 
 **The controls**, once the gate holds:
 
