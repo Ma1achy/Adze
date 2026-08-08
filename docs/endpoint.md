@@ -125,7 +125,7 @@ So use one convergence mechanism at both scales, **over all three channels** —
 ```
 
 - **inner:** stop when the clean carrier-state estimate `(ĥ₀, b̂₀, ℓ̂₀)` settles — smoothed `δ_h`, `δ_b`, `δ_ℓ` all below threshold
-- **outer:** stop when no carrier region exceeds the uncertainty threshold
+- **outer:** stop when no carrier region exceeds the uncertainty threshold (§3.5 for what that signal should be)
 
 **Normalise `δ_h` by latent scale**, or encoder unfreezing (Phase E) silently changes the criterion under you.
 
@@ -140,6 +140,26 @@ Standard adaptive ODE solvers (embedded error estimates, `torchdiffeq`) are **in
 The first control mechanism should therefore be **entropy-gated stochasticity plus a smoothed convergence criterion**, not a learned step-count head. Under SDE the first local control is not step count alone but how much noise to inject per step per position (§2), which needs no head.
 
 ### 3.3 Outer loop R — rungs 1 and 2, combined
+
+**PRECONDITION, measured 8 Aug 2026 — R > 1 is gated on per-block accuracy.**
+
+Iterative refinement only pays once a regenerated block is more often right than
+wrong. Below that threshold more passes destroy more than they fix, because a
+pass does not *transport* information through a neighbour — it replaces that
+neighbour with a fresh sample, and at low accuracy the sample is usually wrong.
+
+Measured on six checkpoints, three passes, erasing the target plus one neighbour:
+the aggregate effect falls **+2.51% -> +1.09% -> +0.93%** while `preserved` — the
+rate at which untouched blocks still match — collapses **0.10% -> 0.05% ->
+0.00%**. The non-propagating control (erase the target alone) is flat at
++2.51 / +2.52 / +2.46 with `preserved` at 98.8%, so the loss is the neighbours
+being overwritten, not the extra compute.
+
+**Nothing in the adaptive-R machinery below says this, and it changes which
+constraint binds.** §3.3's stopping criterion and §3.4's adaptive rho both
+address when to STOP iterating. At current accuracy the binding constraint is the
+STARTING condition: whether a second pass is worth taking at all. Both rungs
+assume a regime this system is not yet in.
 
 R *is* a computation choice, because each iteration erases and regenerates rather than refining an integration. Two rungs, and they compose.
 
@@ -168,11 +188,35 @@ If carrier-region selection is uncertainty-driven and the model is confident eve
 
 It also does something better: it **bounds** the overthinking risk. Recurrent-depth models degrade at extreme depth, and v0's churn sweep showed harm past a point.
 
-But **"extra iterations cannot hurt" is too strong.** Once the uncertainty selector returns an empty set, subsequent iterations are skipped exactly and cannot alter the sample. *Before* that point, false-positive uncertainty, boundary churn or selector miscalibration can still cause harmful erasure. Selector calibration and quality-by-iteration stay required measurements.
+But **"extra iterations cannot hurt" is too strong.** Once the uncertainty selector returns an empty set, subsequent iterations are skipped exactly and cannot alter the sample. *Before* that point, false-positive uncertainty, boundary churn or selector miscalibration can still cause harmful erasure. Selector calibration and quality-by-iteration stay required measurements — see §3.5, which is also where the calibration would come from.
 
 So adaptive ρ is the prerequisite, not learned R. It is already in the design, it bounds the known failure mode, and it demotes R from a quality parameter to a compute-efficiency one — which rung 2 then recovers.
 
-### 3.5 What is learned, and what is chosen
+### 3.5 The selection signal — forward/backward disagreement
+
+Everything above depends on an uncertainty estimate deciding which carrier regions to erase, and that estimate is **not settled**. It also has a known trap: DiD found post-hoc confidence performs *worse than not refining at all* — 29.85 against a 27.36 baseline — because a completed sequence gets reaffirmed by the model that produced it. Snapshot confidence, recorded at the moment of decision, worked; post-hoc did not.
+
+**Adze has a signal that avoids that failure mode by construction, and it comes from the architecture rather than from confidence.**
+
+The two masks are already a forward/backward pair. **Causal** predicts block *b* from its prefix. **Global**'s advantage comes from the downstream consumer implying what *b* must have been. Two genuinely different computational paths to the same quantity — which is the structure round-trip consistency exploits (Scheinker, arXiv 2608.00675), arrived at from the other direction.
+
+So: **select the blocks where the two paths disagree.**
+
+Why this is categorically different from the candidates already listed:
+
+- it is not a self-report. It compares two computations rather than asking the model how sure it is
+- a model can be confidently wrong and entropy will not catch it; it cannot be confidently wrong **in two independent ways that happen to agree**
+- most architectures cannot compute this. Adze can, because block-causal drafting and global refinement give it two paths to every block
+
+**Cost is one extra pass, not one per block** — a single global-mask forward yields the backward estimate for every position simultaneously.
+
+**Also worth taking from that paper:** a *calibrator* fit on training rollouts, predicting error **magnitude** rather than only ranking it. That is what turns a selection signal into a usable threshold, and it is what §3.3's stopping criterion needs to stop being a hand-tuned constant.
+
+**A tension worth recording**, because it bears on the M7 diagnosis: that work reports bidirectional training at *negative cost* — one network beating two direction specialists in both directions. Adze's mix pilot measured the opposite, with more second-mode training degrading that mode. The disagreement is mild evidence that something specific to Adze's setup is wrong (the `|S|` mismatch between training erasure and inference erasure) rather than multi-mode training being generally costly.
+
+**Status:** unvalidated, and not for now. But it is the strongest candidate for the block-selection problem and it should not be lost.
+
+### 3.6 What is learned, and what is chosen
 
 - **learned:** content (`h`), structure (`b`), extent (`ℓ`) — all supervised by reconstruction, all properties of the output
 - **adaptive, unlearned:** inner steps, ρ, R via rung 1 — runtime decisions from measurable uncertainty
@@ -271,6 +315,24 @@ One backbone, three typed input channels, three prediction heads. The channels s
 Draft-versus-refine, outer iteration count, erasure ratio, entropy-gated stochasticity and boundary-commit rules are **sampling policies**, not separate models. The backbone is trained across mask modes and adapted to its own rollouts; nothing else needs its own weights.
 
 ### 4.3 Compute placement
+
+**CORRECTION, 8 Aug 2026 — pooling alone gives a LARGER WINDOW, not a SHORTER
+PATH.** The claim that hierarchy buys reach has been wrong in this document since
+it was written, and the distinction matters for what has to be built.
+
+Pooling chunks into blocks lets one attention operation span more raw positions.
+That widens the window in units of chunks. It does not shorten the *path* between
+two positions that were already inside the window, and it does not compose across
+levels on its own: information pooled up to a coarse state is only useful to a
+fine position if something carries it back down.
+
+**Multiplicative reach needs a two-way path** — chunks -> blocks -> sections ->
+blocks -> chunks, with coarse states refreshed bottom-up and then broadcast
+top-down. One-way pooling is a wider single hop; the round trip is what turns
+levels into a product rather than a sum.
+
+This is not idle. The measured single-pass horizon was expected to be the thing
+hierarchy fixed, and a one-way pooling stack would not have fixed it.
 
 The carrier stays at chunk resolution throughout. The expensive computation runs on transient block summaries — `z = P_b(h)`, `h' = U_b(z', h)` — where `P_b` softly pools chunks by the boundary field and `U_b` projects refined summaries back. Moving a boundary changes the pooling map without changing chunk identities.
 
@@ -1068,6 +1130,7 @@ For §5.6a specifically:
 10. **Reasoning with latent thoughts: on the power of looped transformers** — Saunshi et al. 2025. The reasoning-versus-memorisation trade, measured at pretraining scale, plus the closeness regulariser that makes it continuous.
 11. **Scaling up test-time compute with latent reasoning** — Geiping et al. 2025. Randomised unrolling and truncated backpropagation; the recipe that makes looping trainable.
 12. **Ouro / LoopLM** — Zhu et al. 2025. Looped pretraining through the full modern pipeline, ~2–3× parameter efficiency.
-13. **Thinking deeper, not longer** — arXiv 2603.21676. Final-only versus intermediate supervision in depth-recurrent transformers, on three compositional domains. The source of the shortcut-learning caveat in §5.6a.
+13. **Round-Trip Consistency** — Scheinker, arXiv 2608.00675. Bidirectional latent diffusion over dynamical systems; the round-trip discrepancy is a measurement-free proxy for unobservable rollout error, with a calibrator predicting its magnitude. The domain does not transfer — text is not a reversible dynamical system — but the *two-paths-to-one-quantity* structure does, and it is the source of §3.5.
+14. **Thinking deeper, not longer** — arXiv 2603.21676. Final-only versus intermediate supervision in depth-recurrent transformers, on three compositional domains. The source of the shortcut-learning caveat in §5.6a.
 
 Trackers: `VILA-Lab/Awesome-DLMs`, `AIDASLab/Awesome-Diffusion-LLM`. The continuous-DLM literature is moving fast enough that this document has a shelf life of months.

@@ -1,0 +1,33 @@
+########## L8 seed1 START 15:54
+config        configs/debug.yaml  (cap100)
+device        mps
+latents       (60000, 28, 16)  [n, N=B*K, D]  scale 0.7961
+              real positions 62.2%, std 1.0000, RMS norm 4.000 vs sqrt(D)=4.000
+params        2.78M
+shapes        B=7 K=4 D=16 N=28
+
+==========================================================================
+GATE — overfit one batch (8 examples, loss to near zero)
+==========================================================================
+  initial loss  1.958518
+  final loss    0.041284
+  per block (final / initial):
+    b=0  10.72%   <- no prefix; unconditional, floors above the rest
+    b=1   0.84%
+    b=2   0.58%
+    b=3   0.57%
+    b=4   0.75%
+    b=5   0.57%
+    b=6   0.59%
+  PASS — worst conditioned block 0.84% of initial (threshold 2%)
+
+regime A + B mix (50%/50%) — 20000 steps, batch 256, lr 0.001
+  step      1  loss 1.986650  block all  regime B steps 0
+  step   2000  loss 0.732430  block all  regime B steps 963
+  step   4000  loss 0.826358  block all  regime B steps 1943
+  step   6000  loss 0.636279  block all  regime B steps 2960
+  step   8000  loss 0.807912  block all  regime B steps 3928
+  step  10000  loss 0.601626  block all  regime B steps 4960
+  step  12000  loss 0.795606  block all  regime B steps 5960
+  step  14000  loss 0.590035  block all  regime B steps 6971
+  step  16000  loss 0.568381  block all  regime B steps 8000
