@@ -180,10 +180,35 @@ variables there; see §12.
 
 The decomposition shows that changing provenance composition is sufficient to
 account descriptively for the pooled distance profile. Because the same records
-estimate the class effects and the distance outcomes, this is not yet a formal
-test that the conditional distance effect is zero. A per-seed conditional
-regression, or leave-one-seed-out composition prediction, is what would make it
-one; neither has been run.
+estimate the class effects and the distance outcomes, that table alone is not a
+formal test that the conditional distance effect is zero. **Both tests that would
+make it one have now been run**, on the same six seeds.
+
+**Conditional regression.** A linear probability model on the paired difference
+`1[global correct] − 1[causal correct]`, fitted per seed and averaged, so the
+uncertainty is between-seed:
+
+| model | slope in distance, per block | 95% CI (t, 5 df) | z |
+|---|---|---|---|
+| `y ~ 1 + d` (marginal) | **−0.905% ± 0.245** | [−1.54, −0.28] | −3.69 |
+| `y ~ 1 + d + provenance` (conditional) | **−0.291% ± 0.391** | [−1.30, +0.72] | −0.74 |
+
+Holding provenance fixed removes **68%** of the marginal slope and takes it from
+significant to not distinguishable from zero.
+
+**Leave-one-seed-out prediction.** Class gaps estimated on five seeds, applied to
+the held-out seed's own composition, so no record contributes to both sides. The
+out-of-sample residuals are +0.12% ± 0.52, +0.03% ± 0.70, −0.57% ± 0.43 and
+−0.47% ± 0.50 at d = 1…4 — every one inside its bar. **The decomposition survives
+out of sample**, which the in-sample table could not establish.
+
+**What this does and does not license.** The conditional slope's interval
+**contains the marginal slope**. So this is a failure to reject, not an
+equivalence result: the design cannot exclude a conditional distance effect as
+large as the one originally claimed. What it establishes is that provenance
+composition predicts the profile out of sample, and that once provenance is in the
+model the distance term is no longer supported by the data. Those are the two
+claims §5 makes.
 
 **This decomposition is POST HOC.** It was not among the predictions registered
 before the data existed. It is reported as a correction to a claim this work made,
@@ -338,6 +363,13 @@ More data does help wherever cells overlap — the one-leaf d = 4 cell is a
 demonstration of exactly that. A redesigned generator is required only for
 combinations with structurally zero support.
 
+**But "the design contains this contrast" and "the design contains enough of it to
+measure at reasonable cost" are different statements**, and the same cell shows
+the gap: one-leaf d = 4 holds ~134 records per seed and needed all six seeds to
+reach z = 4.04. It is barely estimable rather than comfortably so. Where overlap
+is that thin, more data is the correct remedy in principle and an expensive one in
+practice, which is why redesign was the route taken here.
+
 **Replication reduces sampling and training-run uncertainty, but does not remove
 design confounding; stratification or redesign is also required.**
 
@@ -389,6 +421,12 @@ the swing.
   cells are 76-92% both-leaves and far cells ~30% both-from-earlier. Some
   provenance-by-distance combinations are well supported — the one-leaf class runs
   the full range — and others are not.
+
+- **Thin overlap is not the same as no overlap, but it costs like it.** The
+  one-leaf class spans the full distance range, so the contrast exists — yet
+  d = 4 holds ~134 records per seed and took six seeds to reach z = 4.04. More
+  data recovers such cells in principle; the cost is why this work redesigned the
+  generator instead.
 
 - **At d = 1, one class has ZERO SUPPORT, and the class effects are themselves
   estimated from distance-imbalanced cells.** both-from-earlier is 0.0% of the
