@@ -8,8 +8,8 @@
 ## 1. The question
 
 Refinement architectures for diffusion language models share an assumption:
-regenerating a token or a block with *later* context in view is better than
-regenerating it with only earlier context. It is the reason global refinement
+regenerating a token or a block with *later* context in view can provide
+corrective evidence unavailable to the prefix. It is the reason global refinement
 passes exist, and the reason "revision" is thought to differ from ordinary
 generation.
 
@@ -63,7 +63,21 @@ effect. Three conditions, on the same architecture and the same checkpoint:
 | **early corrupted** — a step with consumers | the **clean** value | **+2.3%** | — |
 | **consistent corruption** — corrupt, then recompute everything downstream | the **corrupted** value | −0.5% n.s. | **+1.9%** |
 
-χ² = 21.25 on the paired outcomes; global-only 49 against causal-only 12.
+**Which sample those statistics come from:** χ² = 21.25 with global-only 49
+against causal-only 12 is McNemar with continuity correction on the paired RESULT
+outcomes of the **`early` condition** — row two of the table — over n = 2000
+held-out corrupted traces from a single checkpoint, comparing global against
+causal on the same traces with the same erasure noise. It is not pooled across
+conditions and not pooled across the six seeds; the six-seed figure is §4's.
+
+**What consistent corruption does.** It changes the target step's *result* while
+leaving its *operands* untouched, so that step is deliberately made locally
+inconsistent — its own arithmetic no longer checks — and every descendant is then
+recomputed from the changed value so the rest of the trace is internally
+consistent with it. `is_valid()` is therefore False on the result, and must be:
+leaving block b's operands alone is exactly what lets a causal regeneration
+recompute the clean value from the prefix while the pin points at the corrupted
+one.
 
 The third row is the load-bearing one. Consistent corruption does not remove the
 pin — it **redirects** it. Global regeneration then loses against the clean value
@@ -78,17 +92,19 @@ stronger claim than one that merely disappears without it.**
 Six independently trained seeds, identical configuration, 2000 held-out traces
 each, paired within checkpoint:
 
-- **raw +2.51pp ± 0.62**, every seed positive
-- **recalibrated +4.42pp ± 0.69**, against the measured no-pin handicap
+- **the headline is the RAW effect: +2.51pp ± 0.62**, every seed positive
+- a **baseline-adjusted estimate** of +4.42pp ± 0.69 is reported alongside it
 - chance **0.63%**, measured as a permutation null grouped by block index — not
   an analytic guess
 
-The recalibration subtracts the handicap measured in the root condition, where no
-pin exists: global carries a condition-level penalty there unrelated to the
-mechanism. It is reported as a fairness correction and nothing more. A test
-across seeds for whether it is also a lower-variance estimator — a control
-variate — **failed**: corr(handicap, effect) = +0.210 against a required 0.355,
-so the variance claim was dropped rather than softened.
+The baseline adjustment subtracts the handicap measured in the root condition,
+where no pin exists and global carries a condition-level penalty unrelated to the
+mechanism. It is an estimate under the assumption that the handicap is additive
+and condition-level, which is an assumption and not a measurement, so the raw
+figure is primary and the adjusted one is secondary. A test across seeds for
+whether the adjustment is also a lower-variance estimator — a control variate —
+**failed**: corr(handicap, effect) = +0.210 against a required 0.355, so that
+claim was dropped rather than softened.
 
 **The absolute rates are weak and this is stated plainly.** Global reaches ~3.6%
 against 0.63% chance. That is 5× chance, not 50×. The mechanism exists and is
@@ -111,7 +127,7 @@ where it is most informative.** In the both-from-earlier class a causal
 regeneration has everything it needs to recompute the step, and does so at 9.1%
 against 0.6% chance — global's extra view is not merely useless there, it costs.
 
-### The distance profile was this effect in disguise
+### The apparent distance window is explained by provenance composition
 
 Stratifying instead by the distance from the erased block to the step that
 consumes its result gives, over the same six seeds, +2.90 / +2.84 / +0.29 / +0.28
@@ -130,12 +146,17 @@ class mix alone, **with no distance term of any kind**:
 | 3 | +0.29% ± 0.39 | +0.86% | −0.57% ± 0.39 |
 | 4 | +0.28% ± 0.42 | +0.75% | −0.47% ± 0.42 |
 
-Every residual is inside its error bar. And within a fixed class the advantage
-persists at every distance measured — one-leaf at **d = 4 is +2.59% (z = 3.00)**,
-the very cell that reads null when pooled.
+Every residual is inside its error bar — though those bars omit uncertainty in
+the estimated class gaps, so they are narrower than a formal test would allow.
 
-**There is no measured distance horizon out to d = 4.** Distance was a proxy for
-provenance.
+And within the **one-leaf** class the advantage remains significant at the maximum
+measured distance, **d = 4: +2.59% (z = 3.00)** — the very cell that reads null
+when pooled. That result rejects a hard two-step horizon. It is stated for
+one-leaf specifically because the other two classes do not have adequate support
+at d = 4: both-leaves holds ~23 records per seed there and both-from-earlier ~36.
+
+**No hard two-step horizon survives.** The window was a marginal profile over
+cells whose provenance composition changes with distance.
 
 **And d = 4 is the maximum this generator produces.** "Every distance" means every distance
 the tree generator produces, and its furthest cell holds ~117 traces per seed. The
@@ -157,12 +178,16 @@ Worse, the class effects are estimated from distance-imbalanced cells — at d =
 both-from-earlier has **zero support** — so no estimator can separate the two
 variables there; see §12.
 
-What the decomposition establishes is that distance adds nothing once provenance
-is known **on this generator**. It does not establish that no horizon exists. That
-requires a generator whose consumer assignment does not inherit the evaluation
-order, and the status of that work is stated once, in §12: the generator is built
-and verified, a model has been trained on it, and its repair effect is at chance,
-so it has produced no interpretable distance measurement yet.
+The decomposition shows that changing provenance composition is sufficient to
+account descriptively for the pooled distance profile. Because the same records
+estimate the class effects and the distance outcomes, this is not yet a formal
+test that the conditional distance effect is zero. A per-seed conditional
+regression, or leave-one-seed-out composition prediction, is what would make it
+one; neither has been run.
+
+**This decomposition is POST HOC.** It was not among the predictions registered
+before the data existed. It is reported as a correction to a claim this work made,
+which is a different epistemic status from the pre-registered cuts in §9.
 
 ## 6. Disjoint sources
 
@@ -219,43 +244,40 @@ rather than a finding: task-dependence would track how much of a task's reasonin
 each step's own prefix already determines, not how far its dependencies reach.
 Testing it needs their data cut by dependency type, which has not been done.
 
-**Two results carry state across denoising steps, which is the mechanism this
-work's refinement loop lacks.** Both are prior art for the fix rather than for the
-measurement.
+**Residual Context Diffusion** (arXiv 2601.22954) and **Learned Relay
+Representations** (arXiv 2605.22967) preserve continuous information across
+successive denoising iterations, demonstrating the utility of temporal latent
+persistence. Our intervention concerns a different axis: later positions within
+the generated reasoning trace. Neither work holds an erased position's direct
+state fixed while manipulating whether visible later-position latents derive from
+a clean or corrupted predecessor.
 
-**RCD** (arXiv 2601.22954) converts discarded token representations into
-contextual residuals and injects them into the next denoising step, so information
-that would otherwise be thrown away when a token is committed survives into the
-following round.
-
-**Relay** (arXiv 2605.22967) carries last-layer hidden states forward through a
-differentiable per-token channel, trained with truncated backpropagation through
-time, and frames the problem as the **"hard reset"** between denoising rounds.
-
-That framing is the same problem this work measured from the other side. §1a of
-`docs/scratchpad-reach.md` found the refinement loop **shreds** context rather
-than relaying it: a pass regenerates a neighbour and replaces it with something
-usually wrong, so `preserved` collapses from 0.10% to 0.00% over three passes and
-the effect falls from +2.51% to +0.93%. Nothing is carried forward because each
-pass restarts from the committed discrete output.
-
-Relay's fix — carry the continuous state forward rather than recompute it from the
-discrete output — is the content/carrier separation this repository had proposed
-for its own relay experiment, already implemented and trained. Any future version
-of that experiment should build on it rather than reinvent it.
+They are, however, direct prior art for a *fix* this work independently proposed.
+§1a of `docs/scratchpad-reach.md` measured that our refinement loop **shreds**
+context rather than relaying it: a pass regenerates a neighbour and replaces it
+with something usually wrong, `preserved` collapses from 0.10% to 0.00% over three
+passes, and the effect falls from +2.51% to +0.93%. Relay names that problem the
+**"hard reset"** between denoising rounds and fixes it by carrying last-layer
+hidden states forward through a differentiable per-token channel — which is the
+content/carrier separation this repository had proposed for its own relay
+experiment, already implemented and trained.
 
 ## 8. Negative results
 
-Absolute exploitation is weak, and five attempts to improve it by changing the
-training signal produced four nulls and one false positive. They are reported
-because they constrain the explanation.
+Absolute exploitation is weak. Five attempts to improve it by changing the
+training signal produced **four experiments that found no detectable improvement**
+and one false positive. They are reported because they constrain the explanation.
+
+**A noisy null does not establish invariance.** Each row below reports a failure
+to detect, at the power available; none of them shows that the quantity is
+unaffected.
 
 | hypothesis | outcome |
 |---|---|
-| regime A/B mix share | null — a 5× change left the handicap unmoved |
-| \|S\| mismatch between training and inference | null — accuracy declines monotonically with \|S\|, best at \|S\| = 1 |
-| prefix reliability during refinement training | null — structured erasure left the prefix slope within 1σ of zero |
-| mode partition (regime A always prefix-only, regime B sometimes pinned) | null — removing the pin from half of refinement training gave convergence at chance, not transfer |
+| regime A/B mix share | no detected change — a 5× change produced no detected change in the handicap |
+| \|S\| mismatch between training and inference | no detected improvement — accuracy declines monotonically with \|S\|, best at \|S\| = 1 |
+| prefix reliability during refinement training | no detected improvement — structured erasure left the prefix slope within 1σ of zero |
+| mode partition (regime A always prefix-only, regime B sometimes pinned) | no detected transfer — removing the pin from half of refinement training gave convergence at chance, not transfer |
 | shortcut learning | **never cleanly tested** — its premise was measured false first: the pin is already absent on 59.5% of erased blocks |
 
 One arm appeared to work: a positive prefix slope at +1.27pp, z = 1.42 on one
@@ -280,8 +302,12 @@ visible in the commit history:
 - the both-from-earlier cell going to causal
 - the redirected pin switching the advantage to the corrupted target
 
-All four held. Ten stratifications found after the fact would be p-hacking; four
-stated in advance that then hold is the opposite.
+All four held as plots. The first did not hold as a *cause*: the composition
+decomposition in §5 showed provenance carrying it.
+
+**That decomposition is POST HOC and is marked as such wherever it appears.** It
+was not registered in advance; it is a correction to a claim this work made after
+seeing the data, and it carries the weaker epistemic status that implies.
 
 Four confident wrong turns are also kept in the record with the reason each
 failed: live-dimension shrinkage, the sampler "reproducing the marginal", an
@@ -289,25 +315,18 @@ exposure-bias story, and a prefix information estimate that was a kNN artifact.
 
 ## 10. A methodological finding
 
-**The confound is in the LINEARISATION, not in tree structure itself.** An earlier
-draft of this section said "in tree-structured reasoning tasks, distance-to-
-consumer is confounded with dependency type by construction". That is an
-overclaim, and the correction matters because it says what a fix must change.
+In this generator, distance-to-consumer is strongly associated with dependency
+type. Its construction and linearisation place different provenance classes into
+different distance distributions. A marginal distance profile therefore combines
+any genuine reach effect with changing provenance composition. Stratification can
+separate the variables where the design has overlapping support; combinations
+with structurally zero support require a redesigned generator.
 
-A tree does not determine linear consumer distance. It determines *ancestry*.
-Distance only appears once the tree is laid out in an evaluation order, and it is
-that layout which couples the two variables. Under **post-order** emission the
-coupling is tight and predictable: a step whose operands both come from earlier
-steps roots a larger subtree, and its parent cannot be emitted until that whole
-subtree has been, so its consumer is further away. A step with two literal
-operands roots a minimal subtree and its parent often follows immediately.
-
-The same tree under a different linearisation gives a different distance profile
-from identical dependency structure. So the claim is:
-
-> Where consumer distance is induced by a fixed evaluation order over a
-> hierarchical structure, distance and dependency type can be strongly coupled,
-> and post-order over an expression tree is a case where they are.
+An earlier draft of this section claimed the confound holds "in tree-structured
+reasoning tasks, by construction", and that a consumer is further away "in any
+evaluation order". Both are false. **Tree structure does not determine linear
+consumer distance — scheduling and sibling order do.** The result belongs to this
+generator and this linearisation, not to tree-structured reasoning generally.
 
 The consequence is specific and checkable: **a distance profile computed on such
 data can show a spurious window**, because the near cells are dominated by the
@@ -315,45 +334,42 @@ dependency type where downstream evidence helps most and the far cells by the ty
 where it helps least. This work found that window at z = 6.06 and z = 4.21 over
 six seeds and led with it.
 
-The correction is not more seeds. Six seeds is what made it look unassailable.
-**Replication fixes sampling noise; only decomposition fixes a confound.**
+More data does help wherever cells overlap — the one-leaf d = 4 cell is a
+demonstration of exactly that. A redesigned generator is required only for
+combinations with structurally zero support.
+
+**Replication reduces sampling and training-run uncertainty, but does not remove
+design confounding; stratification or redesign is also required.**
 
 We suggest that any distance or reach profile reported on structured reasoning
 data be accompanied by the same decomposition, and — where a genuine reach claim
 is intended — a generator whose consumer assignment does not inherit the layout.
 
-## 11. Method note: why the interior band excludes the ends
+## 11. Method note: the interior band
 
-The decorrelating generator's cross-tab is reported over an **interior band** —
-steps at index >= 2 whose consumer draw has the full bounded range available. A
-reader is entitled to ask why the ends are dropped.
+We restrict the distance estimand to a pre-specified interior band in which the
+intended provenance and distance levels are jointly supportable. At boundary
+positions, some combinations have structurally zero support; regression adjustment
+cannot recover those cells without extrapolating beyond the observed design.
+Boundary steps remain in training and aggregate evaluation but are excluded from
+the conditional distance analysis.
 
-Position bounds both variables near the ends, from opposite directions. A step at
-index 0 or 1 cannot have two operands from earlier steps, so its provenance class
-is constrained by where it sits. A step within `DISTANCE_MAX` of the end cannot
-have a distant consumer, so its distance is constrained by where it sits. In those
-regions the two variables are both partly functions of position.
+Concretely: a step at index 0 or 1 cannot have two operands from earlier steps, so
+its provenance class is restricted by position; a step within `DISTANCE_MAX` of
+the end cannot have a distant consumer, so its distance is restricted by position.
 
-**An earlier draft said "no construction avoids it". That was wrong, and it
-contradicted the design it was defending.** The interior band IS a construction
-that avoids boundary contamination — that is precisely what it does. Other
-constructions exist too: a cyclic or wrap-around dependency structure would remove
-the boundary entirely, and padding the chain beyond the analysed region would push
-the bounded region outside it. What is true is narrower:
+**The interior band is one construction among several that avoid boundary
+contamination** — padding, burn-in, restricting eligible target positions, or
+generating longer traces and analysing an interior window would each do it. An
+earlier draft said "no construction avoids it", which was both too strong and in
+contradiction with the design it was defending. The band is defined before the
+data is generated, from the generator's own parameters rather than from anything
+measured, so it cannot be tuned to a result, and the count of excluded steps is
+reported.
 
-> Given a linear chain with hard ends and a bounded consumer draw, positions
-> within `DISTANCE_MAX` of either end have a restricted range, so a decorrelated
-> estimate requires either excluding them or a different chain topology. This
-> generator excludes them.
-
-Excluding is honest; including them and adjusting would be fabrication. The band
-is defined before the data is generated, by the generator's own parameters rather
-than by anything measured, so it cannot be tuned to a result. Steps outside it are
-still generated, still trained on, and still valid — they are excluded from the
-*distance analysis* only, and their count is reported.
-
-The same applies to distances past `DISTANCE_MAX`, which occur only where capacity
-forced an overshoot. They are printed, flagged, and excluded from the swing.
+The same treatment applies to distances past `DISTANCE_MAX`, which occur only
+where capacity forced an overshoot. They are printed, flagged, and excluded from
+the swing.
 
 ## 12. Limitations
 
@@ -369,12 +385,13 @@ forced an overshoot. They are printed, flagged, and excluded from the swing.
   (~117 traces per seed). "The advantage holds at every distance measured" is a
   statement about a short range, and is not evidence that no limit exists further
   out.
-- **Distance and provenance are correlated in this generator**, and that is the
-  main limitation. Near cells are 76-92% both-leaves and far cells ~30%
-  both-from-earlier, so no distance range is available at fixed provenance.
+- **The current generator has SPARSE AND UNBALANCED CONDITIONAL COVERAGE.** Near
+  cells are 76-92% both-leaves and far cells ~30% both-from-earlier. Some
+  provenance-by-distance combinations are well supported — the one-leaf class runs
+  the full range — and others are not.
 
-- **The class effects are themselves estimated from distance-imbalanced cells,
-  and at d = 1 one class has ZERO SUPPORT.** both-from-earlier is 0.0% of the
+- **At d = 1, one class has ZERO SUPPORT, and the class effects are themselves
+  estimated from distance-imbalanced cells.** both-from-earlier is 0.0% of the
   d = 1 cell and ~30% of d = 3 and d = 4, so the provenance effect is estimated
   almost entirely from far records and then used to explain near ones. A
   conditional regression of the effect on distance and provenance jointly cannot
@@ -392,22 +409,22 @@ forced an overshoot. They are printed, flagged, and excluded from the swing.
   only **52%** of them. More traces from the old generator would not help; the
   cell is nearly absent by construction rather than by sampling.
 
-- **The decorrelated regime has no interpretable measurement yet.** A model has
-  been trained on it and its repair effect is +0.43% against a 0.64% permutation
-  chance, with causal at chance — so the per-distance profile it yields is noise
-  and no reach conclusion is drawn from it. The generator is verified (swing
-  0.05pp) and the pipeline passes its gates; what is missing is a model that
-  performs the task well enough on that data to be measured. Every distance claim
-  in this paper therefore still rests on the confounded generator, with the
-  decomposition above as the correction.
+- **The decorrelated generator now exists, but no model has yet been trained and
+  evaluated on it to an interpretable standard.** The generator is verified (swing
+  0.05pp, usable range d = 1..5) and the pipeline passes its gates, but the one
+  model trained on it repairs at +0.43% against a 0.64% permutation chance, with
+  causal at chance — so its per-distance profile is noise and no reach conclusion
+  is drawn from it. **Every distance claim in this paper therefore still rests on
+  the confounded generator**, with the decomposition in §5 as the correction. This
+  is the single statement of that work's status; earlier drafts contradicted
+  themselves across three passages.
 
 ## Claim wording
 
-We found no prior downstream-state provenance control for latent refinement.
-Prior work evaluates correction through end-task comparisons, refinement-scope
-ablations, or descriptive intermediate trajectories. We are not aware of a prior
-intervention that holds an erased block's direct inputs fixed while manipulating
-only the provenance of downstream latent state.
+We found no prior later-position latent-state provenance control for refinement.
+We are not aware of an intervention that holds an erased position's direct state
+and corruption fixed while changing only whether visible later-position latents
+derive from the clean or corrupted predecessor.
 
 Deliberately not claimed: any "first" — not the first mechanism test of diffusion
 refinement, not the first causal ablation of refinement, not the first causal

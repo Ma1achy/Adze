@@ -39,24 +39,29 @@ vanishes and reappears, significantly, against the corrupted step instead.
 An effect that *tracks* the mechanism when the mechanism is relocated is a
 stronger claim than one that merely disappears without it.
 
-Four supporting stratifications, **all predicted before the data**:
+Four supporting stratifications, **all predicted before the data** — the
+provenance decomposition that reinterpreted them came later and is marked post hoc:
 
 - **operand provenance is the axis** — the gap is +3.00% ± 0.29 where the prefix
   determines least (both-leaves), +2.10% ± 0.57 with one leaf, and **−2.86% ±
   1.29** where the prefix determines most (both-from-earlier, where causal
   recomputes the step at 9.1% against 0.6% chance).
-- **no measured reach limit — over a range of four.** The advantage holds at
-  every distance the tree generator produces: one-leaf at **d = 4, the furthest
-  cell, is +2.59% (z = 3.00)**. That cell holds ~117 traces per seed, and d = 4 is
-  the maximum, so this is *not measured beyond four* rather than *shown absent*.
+- **no hard two-step horizon.** Within the **one-leaf** class the advantage
+  remains significant at the maximum measured distance: **d = 4, +2.59%
+  (z = 3.00)**. Stated for one-leaf alone — the other two classes lack adequate
+  support at d = 4 (~23 and ~36 records per seed). d = 4 is also the furthest this
+  generator reaches, so beyond it the question is *not measured* rather than
+  *shown absent*.
 - **distance to consumer was a proxy for provenance, not a separate finding.**
   Pooled, the profile reads +2.9 / +2.8 / +0.3 / +0.3 at d = 1…4 and looks like a
   window of two. But the near cells are 76–92% both-leaves and the far cells are
   ~30% both-from-earlier, and **composition with no distance term at all predicts
   +2.79 / +2.82 / +0.86 / +0.75** — leaving residuals of +0.12 / +0.03 / −0.57 /
-  −0.47, every one inside its error bar. Within a fixed class the advantage
-  survives at every distance measured: one-leaf at **d = 4 is +2.59% (z = 3.00)**,
-  the cell that read null when pooled. See RESULTS, session 22.
+  −0.47, every one inside its error bar — though those bars omit uncertainty in
+  the estimated class gaps. This is a **descriptive, post hoc** decomposition:
+  the same records estimate the class effects and the distance outcomes, so it is
+  not yet a formal test that the conditional distance effect is zero. See RESULTS,
+  session 22.
 - **operand provenance** — largest where the prefix determines least
   (both-leaves +3.1), inverted where it determines most (both-from-earlier:
   causal recovers the clean step at 9.1% against 0.6% chance).
@@ -83,7 +88,9 @@ all the variance. Three qualifications, stated rather than buried:
 
 1. **Oracle block selection.** The corrupted index is known and erased, so this is
    an *upper bound* on what uncertainty-steered selection could achieve.
-2. **The recalibration is a fairness correction, and only that.** The global arm
+2. **The raw +2.5pp is primary; +4.4pp is a BASELINE-ADJUSTED ESTIMATE.** It
+   assumes the handicap is additive and condition-level, which is an assumption
+   rather than a measurement. The global arm
    carries a condition-level penalty unrelated to downstream evidence: −1.9pp ±
    0.4pp measured where no pin exists. It is diagnosed rather than assumed —
    shielding the erased block from its own context changes nothing, and crossing
@@ -256,9 +263,10 @@ provenance reversing where the prefix alone determines the step, the
 both-from-earlier cell going to causal, and the redirected pin switching the
 advantage to the corrupted target. All four held.
 
-Ten stratifications found after the fact would be p-hacking. Ten stated in
-advance that then hold is the opposite, and it is part of why the result is worth
-believing. The commit sequence is the record of which came first.
+The commit sequence is the record of which came first, and it matters for reading
+the rest. **The provenance decomposition that overturned the window is POST HOC** —
+it was not registered, it is a correction made after seeing the data, and it
+carries a weaker status than the four cuts above.
 
 `CLAUDE.md` also carries a **retired findings** section — measurements that
 looked like the thing and were not, each kept with the reason it failed. Live

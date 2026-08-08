@@ -20,7 +20,7 @@ A latent diffusion reasoner regenerates a corrupted reasoning step under two mas
 Supporting cuts, all predicted in advance:
 
 - **operand provenance is the axis** — +3.00% ± 0.29 both-leaves (prefix determines least), +2.10% ± 0.57 one-leaf, **−2.86% ± 1.29** both-from-earlier (prefix determines most, causal recomputes at 9.1% vs 0.6% chance).
-- **distance to consumer is a PROXY for provenance, not a second finding.** Pooled it reads +2.9 / +2.8 / +0.3 / +0.3 at d = 1…4 and looks like a window of two; composition with no distance term predicts +2.79 / +2.82 / +0.86 / +0.75, residuals +0.12 / +0.03 / −0.57 / −0.47, all inside their bars. Within a fixed class the advantage holds at every distance — one-leaf d = 4 is +2.59% (z = 3.00). **State the range with the claim:** d = 4 is the furthest this generator reaches and holds ~117 traces per seed, so this is NOT MEASURED beyond four, not shown absent.
+- **distance to consumer is a PROXY for provenance, not a second finding.** Pooled it reads +2.9 / +2.8 / +0.3 / +0.3 at d = 1…4 and looks like a window of two; composition with no distance term predicts +2.79 / +2.82 / +0.86 / +0.75, residuals +0.12 / +0.03 / −0.57 / −0.47, all inside their bars. Within the **one-leaf** class the advantage remains significant at the maximum measured distance, d = 4: +2.59% (z = 3.00) — which rejects a hard two-step horizon. Stated for one-leaf specifically; the other two classes lack adequate support at d = 4 (~23 and ~36 records per seed). The decomposition is descriptive and POST HOC, not a formal conditional test. **State the range with the claim:** d = 4 is the furthest this generator reaches and holds ~117 traces per seed, so this is NOT MEASURED beyond four, not shown absent.
 - **operand provenance** — both-leaves +3.1\*\*\* (prefix determines least) → both-from-earlier −6.1, where causal recomputes at 9.1% against 0.6% chance.
 - **pad-free subset** — gap is *larger* without padding (+2.9 vs +2.3). The confound is dead, retroactively too.
 - **chance** — RESULT 0.6–0.7%, operands 0.0%. Causal ~2× chance, global ~5×.
@@ -98,7 +98,7 @@ Speculative Correction now occupies the first two in ordinary usage despite a we
 
 ## 5. Why the result is credible
 
-Worth stating explicitly in the writeup, because ten stratifications after the fact would be p-hacking and ten *registered* predictions that hold is the opposite.
+Worth stating explicitly in the writeup — but state the asymmetry too: the four cuts below were registered in advance, and the provenance decomposition that overturned the window was **post hoc**.
 
 Every cut was called before the data:
 
