@@ -185,6 +185,20 @@ Within-run cuts on the same records — the redirected pin, the conflict cut, th
 provenance strata — are not affected by this rule. Generalising a within-run
 SHAPE to the model is, and needs seeds like anything else.
 
+**SHAPE CLAIMS WAIT FOR SEEDS, even when the magnitude does not.** A monotone
+profile, a sign change, a decay, a crossing — these are the claims most worth
+having and the ones a single run is least able to support, because a shape is
+read off several cells at once and any of them can be the noisy one.
+
+Seed 0 has now supplied two shapes that failed to replicate: the pinmix prefix
+slope, and the smooth distance decay that stood in the README for weeks. **Not
+because seed 0 is unusual** — it is the FIRST seed, and the first thing you look
+at is where you find shapes. Any seed run first would do the same.
+
+The magnitude and the shape are separable and often need different budgets: the
+six-seed effect size and the six-seed distance profile came from the SAME six
+dumps, and the profile was the one that changed when it got them.
+
 ## Style
 
 - Type hints on public functions

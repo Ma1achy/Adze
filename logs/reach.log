@@ -1,0 +1,149 @@
+vae           checkpoints/vae_cap100_d16.pt
+traces        2000 held-out corrupted pairs
+sampling      nfe 32, eta 1.0, seed 0 + 10000/pass
+arms          p50 = b + subset at p=0.5 (the training distribution)
+              one = b + exactly one other real block
+              only-b = control, flat in R BY CONSTRUCTION — a rise
+                       in it is a bug, not a compute effect
+
+==========================================================================================
+denoiser_cap100_d16_L4_mixedP50.pt
+==========================================================================================
+       arm    mask   R   |S|   RESULT  preserved   formed
+       p50  global   1  2.72    2.60%      9.95%    99.5%
+       p50  global   2  2.69    1.70%      1.75%    99.8%
+       p50  global   3  2.72    0.80%      0.40%    99.8%
+       p50  causal   1  2.72    0.90%      9.95%    99.9%
+       p50  causal   2  2.69    0.95%      1.75%    99.8%
+       p50  causal   3  2.72    0.70%      0.40%   100.0%
+       one  global   1  2.00    3.60%      0.00%    99.5%
+       one  global   2  2.00    2.35%      0.00%    99.7%
+       one  global   3  2.00    2.00%      0.00%    99.7%
+       one  causal   1  2.00    1.00%      0.00%    99.8%
+       one  causal   2  2.00    0.85%      0.05%    99.8%
+       one  causal   3  2.00    0.75%      0.00%    99.9%
+    only-b  global   1  1.00    4.60%     98.80%    99.2%
+    only-b  global   2  1.00    4.50%     98.80%    98.9%
+    only-b  global   3  1.00    4.25%     98.80%    99.0%
+    only-b  causal   1  1.00    1.15%     98.80%    99.8%
+    only-b  causal   2  1.00    1.05%     98.80%   100.0%
+    only-b  causal   3  1.00    0.90%     98.80%    99.9%
+
+==========================================================================================
+denoiser_cap100_d16_seed1_L4_mixedP50.pt
+==========================================================================================
+       arm    mask   R   |S|   RESULT  preserved   formed
+       p50  global   1  2.72    2.05%      9.95%    99.2%
+       p50  global   2  2.69    1.05%      1.75%    99.6%
+       p50  global   3  2.72    0.60%      0.40%    99.8%
+       p50  causal   1  2.72    0.65%      9.95%    99.7%
+       p50  causal   2  2.69    0.85%      1.75%    99.8%
+       p50  causal   3  2.72    0.50%      0.40%    99.9%
+       one  global   1  2.00    2.80%      0.00%    99.0%
+       one  global   2  2.00    2.00%      0.00%    99.4%
+       one  global   3  2.00    1.45%      0.00%    99.3%
+       one  causal   1  2.00    0.70%      0.00%    99.8%
+       one  causal   2  2.00    0.85%      0.00%    99.7%
+       one  causal   3  2.00    0.45%      0.00%    99.8%
+    only-b  global   1  1.00    2.40%     98.80%    98.6%
+    only-b  global   2  1.00    2.80%     98.80%    98.9%
+    only-b  global   3  1.00    2.20%     98.80%    98.6%
+    only-b  causal   1  1.00    0.90%     98.80%    99.8%
+    only-b  causal   2  1.00    1.15%     98.80%    99.9%
+    only-b  causal   3  1.00    0.85%     98.80%    99.9%
+
+==========================================================================================
+denoiser_cap100_d16_seed2_L4_mixedP50.pt
+==========================================================================================
+       arm    mask   R   |S|   RESULT  preserved   formed
+       p50  global   1  2.72    2.00%      9.95%    99.4%
+       p50  global   2  2.69    1.30%      1.75%    99.7%
+       p50  global   3  2.72    0.90%      0.40%    99.9%
+       p50  causal   1  2.72    0.65%      9.95%    99.9%
+       p50  causal   2  2.69    0.75%      1.75%    99.9%
+       p50  causal   3  2.72    0.55%      0.40%    99.7%
+       one  global   1  2.00    2.30%      0.00%    99.1%
+       one  global   2  2.00    1.65%      0.00%    99.2%
+       one  global   3  2.00    1.05%      0.00%    99.5%
+       one  causal   1  2.00    0.85%      0.00%    99.9%
+       one  causal   2  2.00    0.80%      0.00%    99.9%
+       one  causal   3  2.00    0.75%      0.00%    99.7%
+    only-b  global   1  1.00    3.20%     98.80%    99.3%
+    only-b  global   2  1.00    3.30%     98.80%    99.0%
+    only-b  global   3  1.00    3.30%     98.80%    99.1%
+    only-b  causal   1  1.00    0.85%     98.80%    99.8%
+    only-b  causal   2  1.00    1.05%     98.80%    99.8%
+    only-b  causal   3  1.00    0.85%     98.80%    99.7%
+
+==========================================================================================
+denoiser_cap100_d16_seed3_L4_mixedP50.pt
+==========================================================================================
+       arm    mask   R   |S|   RESULT  preserved   formed
+       p50  global   1  2.72    1.80%      9.95%    96.7%
+       p50  global   2  2.69    1.10%      1.75%    97.4%
+       p50  global   3  2.72    0.90%      0.40%    98.0%
+       p50  causal   1  2.72    1.00%      9.95%    99.8%
+       p50  causal   2  2.69    0.80%      1.75%    99.9%
+       p50  causal   3  2.72    0.85%      0.40%    99.6%
+       one  global   1  2.00    2.25%      0.00%    95.6%
+       one  global   2  2.00    1.75%      0.05%    95.9%
+       one  global   3  2.00    1.05%      0.00%    96.0%
+       one  causal   1  2.00    1.15%      0.00%    99.8%
+       one  causal   2  2.00    0.85%      0.00%    99.9%
+       one  causal   3  2.00    0.75%      0.00%    99.6%
+    only-b  global   1  1.00    3.75%     98.80%    95.5%
+    only-b  global   2  1.00    3.50%     98.80%    95.5%
+    only-b  global   3  1.00    3.35%     98.80%    95.8%
+    only-b  causal   1  1.00    1.20%     98.80%    99.7%
+    only-b  causal   2  1.00    0.95%     98.80%    99.7%
+    only-b  causal   3  1.00    0.90%     98.80%    99.6%
+
+==========================================================================================
+denoiser_cap100_d16_seed4_L4_mixedP50.pt
+==========================================================================================
+       arm    mask   R   |S|   RESULT  preserved   formed
+       p50  global   1  2.72    2.65%      9.95%    98.8%
+       p50  global   2  2.69    1.80%      1.75%    99.5%
+       p50  global   3  2.72    1.30%      0.40%    99.7%
+       p50  causal   1  2.72    0.85%      9.95%   100.0%
+       p50  causal   2  2.69    1.00%      1.75%    99.8%
+       p50  causal   3  2.72    0.40%      0.40%    99.6%
+       one  global   1  2.00    2.70%      0.05%    98.3%
+       one  global   2  2.00    2.00%      0.00%    98.4%
+       one  global   3  2.00    2.05%      0.00%    99.0%
+       one  causal   1  2.00    0.90%      0.00%    99.9%
+       one  causal   2  2.00    1.05%      0.05%    99.9%
+       one  causal   3  2.00    0.65%      0.00%    99.7%
+    only-b  global   1  1.00    3.60%     98.80%    97.5%
+    only-b  global   2  1.00    3.35%     98.80%    97.4%
+    only-b  global   3  1.00    3.30%     98.80%    97.3%
+    only-b  causal   1  1.00    1.00%     98.80%    99.9%
+    only-b  causal   2  1.00    1.20%     98.80%    99.9%
+    only-b  causal   3  1.00    0.75%     98.80%    99.6%
+
+==========================================================================================
+denoiser_cap100_d16_seed5_L4_mixedP50.pt
+==========================================================================================
+       arm    mask   R   |S|   RESULT  preserved   formed
+       p50  global   1  2.72    1.65%      9.95%    97.4%
+       p50  global   2  2.69    1.45%      1.75%    98.8%
+       p50  global   3  2.72    1.20%      0.40%    99.6%
+       p50  causal   1  2.72    0.70%      9.95%    99.9%
+       p50  causal   2  2.69    1.05%      1.75%    99.9%
+       p50  causal   3  2.72    0.65%      0.40%    99.8%
+       one  global   1  2.00    2.85%      0.10%    97.4%
+       one  global   2  2.00    1.95%      0.05%    98.1%
+       one  global   3  2.00    2.15%      0.00%    98.2%
+       one  causal   1  2.00    0.90%      0.10%    99.9%
+       one  causal   2  2.00    0.75%      0.05%    99.9%
+       one  causal   3  2.00    0.85%      0.00%    99.8%
+    only-b  global   1  1.00    3.70%     98.80%    96.2%
+    only-b  global   2  1.00    3.80%     98.80%    97.0%
+    only-b  global   3  1.00    3.75%     98.80%    97.0%
+    only-b  causal   1  1.00    1.10%     98.80%    99.9%
+    only-b  causal   2  1.00    0.75%     98.80%    99.9%
+    only-b  causal   3  1.00    1.15%     98.80%    99.9%
+
+wrote 216000 records to runs/reach6.json
+  Analyse with scripts/m7_reach_read.py — between-seed error bars,
+  per the standing rule. A shape read off one checkpoint is not a shape.
