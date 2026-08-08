@@ -9,3 +9,20 @@ shapes        B=10 K=4 D=16 N=40
 ==========================================================================
 GATE — overfit one batch (8 examples, loss to near zero)
 ==========================================================================
+  initial loss  2.021979
+  final loss    0.031524
+  per block (final / initial):
+    b=0  12.90%   <- no prefix; unconditional, floors above the rest
+    b=1   0.47%
+    b=2   0.44%
+    b=3   0.41%
+    b=4   0.48%
+    b=5   0.39%
+    b=6   0.50%
+    b=7   0.44%
+    b=8   0.36%
+    b=9   0.42%
+  PASS — worst conditioned block 0.50% of initial (threshold 2%)
+
+regime A + B mix (50%/50%) — 60000 steps, batch 256, lr 0.001
+  step      1  loss 1.996092  block all  regime B steps 1
