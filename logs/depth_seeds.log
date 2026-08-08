@@ -32,3 +32,308 @@ regime A + B mix (50%/50%) — 20000 steps, batch 256, lr 0.001
   step  14000  loss 0.590035  block all  regime B steps 6971
   step  16000  loss 0.568381  block all  regime B steps 8000
   step  18000  loss 0.544766  block all  regime B steps 9006
+  step  20000  loss 0.570679  block all  regime B steps 9990
+
+trained in 3167.3s
+regime B      9990/20000 steps (50.0% realised, 50% requested)
+regime A      10010 steps
+checkpoint    checkpoints/denoiser_cap100_d16_seed1_L8_mixedP50.pt
+denoiser      checkpoints/denoiser_cap100_d16_seed1_L8_mixedP50.pt  8L x 128w
+vae           checkpoints/vae_cap100_d16.pt
+condition     --corrupt early
+traces        2000 held-out corrupted pairs, B=7
+sampling      nfe 32, eta 1.0, erasure seed 0
+selection     ORACLE — the corrupted index is known. Upper bound.
+
+==============================================================================
+THE CENTRAL EXPERIMENT
+==============================================================================
+   condition    exact   RESULT  operands   formed   answer  preserved
+        none    20.8%    21.7%     86.5%    99.9%    99.4%      98.8%
+      causal     0.2%     1.5%      0.9%   100.0%    99.4%      98.8%
+      global     0.0%     5.2%      0.0%    98.9%    99.4%      98.8%
+
+==============================================================================
+  GAP (global - causal)   exact -0.2%   RESULT +3.8%   operands -0.9%
+==============================================================================
+  RESULT is the arm the experiment's logic points at: the corruption
+  changes a result, downstream steps consume the original value, so
+  downstream context identifies the RESULT and nothing else. Operands
+  are fixed by the question, and question conditioning (M5) is not
+  built — so a positive RESULT gap with a flat operands gap is exactly
+  the signature the claim predicts.
+  Positive -> regenerating with downstream context in view repairs
+  the corrupted block more reliably than regenerating causally. That
+  is the claim the whole repo was built to test.
+
+  Read as an UPPER BOUND: block selection is oracle here.
+
+  `none` IS NOT THE BASELINE FOR THESE ARMS. It measures the VAE
+  round-trip, not no-revision: the VAE was trained on valid arithmetic
+  only, so it projects an off-distribution corrupted step onto the
+  nearest valid one and silently repairs 19.6% of corruptions. The
+  regeneration arms erase the block and discard that free repair.
+  The reference is CHANCE — see scripts/m7_strata.py, which scores
+  every rate against a permutation null.
+
+PAIRED (McNemar) on RESULT: global-only 104, causal-only 29,
+  discordant 133, chi2(1) with continuity correction = 41.17
+  p < 0.05
+
+wrote 2000 records to runs/L8_s1_early.json
+
+EXAMPLES — same trace, same erasure, only the mask differs
+------------------------------------------------------------------------------
+  block 1  want '65 - 30 = 35'
+       causal  '64 - 50 = 4'
+       global  '36 + 55 = 81'
+  block 0  want '63 - 6 = 57'
+       causal  '88 - 55 = 33'
+       global  '59 - 50 = 89'
+  block 0  want '53 - 30 = 23'
+       causal  '79 - 52 = 17'
+       global  '28 + 62 = 88'
+  block 1  want '7 - 48 = -41'
+       causal  '39 - -37 = 76'
+       global  '57 - 83 = -14'
+  block 0  want '2 + 82 = 84'
+       causal  '53 - 89 = -44'
+       global  '85 - 58 = 20'
+  block 1  want '57 - 82 = -25'
+       causal  '83 - 53 = 30'
+       global  '32 + 50 = 89'
+denoiser      checkpoints/denoiser_cap100_d16_seed1_L8_mixedP50.pt  8L x 128w
+vae           checkpoints/vae_cap100_d16.pt
+condition     --corrupt final
+traces        2000 held-out corrupted pairs, B=7
+sampling      nfe 32, eta 1.0, erasure seed 0
+selection     ORACLE — the corrupted index is known. Upper bound.
+
+==============================================================================
+THE CENTRAL EXPERIMENT
+==============================================================================
+   condition    exact   RESULT  operands   formed   answer  preserved
+        none    14.3%    14.8%     87.0%    99.8%    14.3%      99.2%
+      causal     1.4%     3.3%      5.8%    99.2%     1.4%      99.2%
+      global     0.0%     1.3%      0.1%    87.0%     0.0%      99.2%
+
+==============================================================================
+  GAP (global - causal)   exact -1.4%   RESULT -2.0%   operands -5.8%
+==============================================================================
+  RESULT is the arm the experiment's logic points at: the corruption
+  changes a result, downstream steps consume the original value, so
+  downstream context identifies the RESULT and nothing else. Operands
+  are fixed by the question, and question conditioning (M5) is not
+  built — so a positive RESULT gap with a flat operands gap is exactly
+  the signature the claim predicts.
+  Positive -> regenerating with downstream context in view repairs
+  the corrupted block more reliably than regenerating causally. That
+  is the claim the whole repo was built to test.
+
+  Read as an UPPER BOUND: block selection is oracle here.
+
+  `none` IS NOT THE BASELINE FOR THESE ARMS. It measures the VAE
+  round-trip, not no-revision: the VAE was trained on valid arithmetic
+  only, so it projects an off-distribution corrupted step onto the
+  nearest valid one and silently repairs 19.6% of corruptions. The
+  regeneration arms erase the block and discard that free repair.
+  The reference is CHANCE — see scripts/m7_strata.py, which scores
+  every rate against a permutation null.
+
+PAIRED (McNemar) on RESULT: global-only 24, causal-only 64,
+  discordant 88, chi2(1) with continuity correction = 17.28
+  p < 0.05
+
+wrote 2000 records to runs/L8_s1_final.json
+
+EXAMPLES — same trace, same erasure, only the mask differs
+------------------------------------------------------------------------------
+  block 2  want '35 - 68 = -33'
+       causal  '34 - 55 = -19'
+       global  '85 - 50 = 15'
+  block 2  want '9 + 10 = 19'
+       causal  '54 - 59 = 5'
+       global  '5 - 98 = -90'
+  block 2  want '85 - 59 = 26'
+       causal  '23 - 85 = -62'
+       global  '95 - 60 = -5'
+  block 6  want '-78 - -54 = -24'
+       causal  '-54 - -87 = -5'
+       global  '55 - 80 = -13'
+  block 3  want '75 - 56 = 19'
+       causal  '66 - 46 = 20'
+       global  '55 - 80 = -1'
+  block 3  want '83 - 75 = 8'
+       causal  '53 - 97 = -34'
+       global  '57 - 80 = -13'
+########## L8 seed1 DONE 16:51
+########## L8 seed2 START 16:51
+config        configs/debug.yaml  (cap100)
+device        mps
+latents       (60000, 28, 16)  [n, N=B*K, D]  scale 0.7961
+              real positions 62.2%, std 1.0000, RMS norm 4.000 vs sqrt(D)=4.000
+params        2.78M
+shapes        B=7 K=4 D=16 N=28
+
+==========================================================================
+GATE — overfit one batch (8 examples, loss to near zero)
+==========================================================================
+  initial loss  1.956638
+  final loss    0.044868
+  per block (final / initial):
+    b=0  12.95%   <- no prefix; unconditional, floors above the rest
+    b=1   0.58%
+    b=2   0.49%
+    b=3   0.78%
+    b=4   0.43%
+    b=5   0.48%
+    b=6   0.64%
+  PASS — worst conditioned block 0.78% of initial (threshold 2%)
+
+regime A + B mix (50%/50%) — 20000 steps, batch 256, lr 0.001
+  step      1  loss 2.013182  block all  regime B steps 1
+  step   2000  loss 0.928050  block all  regime B steps 986
+  step   4000  loss 0.685616  block all  regime B steps 1969
+  step   6000  loss 0.645418  block all  regime B steps 2970
+  step   8000  loss 0.614888  block all  regime B steps 3992
+  step  10000  loss 0.610344  block all  regime B steps 4983
+  step  12000  loss 0.800890  block all  regime B steps 5942
+  step  14000  loss 0.584544  block all  regime B steps 6970
+  step  16000  loss 0.823556  block all  regime B steps 7997
+  step  18000  loss 0.558258  block all  regime B steps 9002
+  step  20000  loss 0.806946  block all  regime B steps 9989
+
+trained in 3117.1s
+regime B      9989/20000 steps (49.9% realised, 50% requested)
+regime A      10011 steps
+checkpoint    checkpoints/denoiser_cap100_d16_seed2_L8_mixedP50.pt
+denoiser      checkpoints/denoiser_cap100_d16_seed2_L8_mixedP50.pt  8L x 128w
+vae           checkpoints/vae_cap100_d16.pt
+condition     --corrupt early
+traces        2000 held-out corrupted pairs, B=7
+sampling      nfe 32, eta 1.0, erasure seed 0
+selection     ORACLE — the corrupted index is known. Upper bound.
+
+==============================================================================
+THE CENTRAL EXPERIMENT
+==============================================================================
+   condition    exact   RESULT  operands   formed   answer  preserved
+        none    20.8%    21.7%     86.5%    99.9%    99.4%      98.8%
+      causal     0.3%     1.2%      1.1%   100.0%    99.4%      98.8%
+      global     0.1%     3.1%      0.1%    92.7%    99.4%      98.8%
+
+==============================================================================
+  GAP (global - causal)   exact -0.2%   RESULT +1.9%   operands -0.9%
+==============================================================================
+  RESULT is the arm the experiment's logic points at: the corruption
+  changes a result, downstream steps consume the original value, so
+  downstream context identifies the RESULT and nothing else. Operands
+  are fixed by the question, and question conditioning (M5) is not
+  built — so a positive RESULT gap with a flat operands gap is exactly
+  the signature the claim predicts.
+  Positive -> regenerating with downstream context in view repairs
+  the corrupted block more reliably than regenerating causally. That
+  is the claim the whole repo was built to test.
+
+  Read as an UPPER BOUND: block selection is oracle here.
+
+  `none` IS NOT THE BASELINE FOR THESE ARMS. It measures the VAE
+  round-trip, not no-revision: the VAE was trained on valid arithmetic
+  only, so it projects an off-distribution corrupted step onto the
+  nearest valid one and silently repairs 19.6% of corruptions. The
+  regeneration arms erase the block and discard that free repair.
+  The reference is CHANCE — see scripts/m7_strata.py, which scores
+  every rate against a permutation null.
+
+PAIRED (McNemar) on RESULT: global-only 61, causal-only 23,
+  discordant 84, chi2(1) with continuity correction = 16.30
+  p < 0.05
+
+wrote 2000 records to runs/L8_s2_early.json
+
+EXAMPLES — same trace, same erasure, only the mask differs
+------------------------------------------------------------------------------
+  block 1  want '65 - 30 = 35'
+       causal  '68 - 54 = 24'
+       global  '89 - 55 = 15'
+  block 0  want '63 - 6 = 57'
+       causal  '78 - 35 = 33'
+       global  '76 - 50 = 5'
+  block 0  want '53 - 30 = 23'
+       causal  '72 - 49 = 17'
+       global  '86 - 52 = 3'
+  block 1  want '7 - 48 = -41'
+       causal  '39 - -37 = 76'
+       global  '71 - 51 = 73'
+  block 0  want '2 + 82 = 84'
+       causal  '59 - 73 = -34'
+       global  '14 + 68 = 96'
+  block 1  want '57 - 82 = -25'
+       causal  '88 - 53 = 35'
+       global  '40 + 50 = 84'
+denoiser      checkpoints/denoiser_cap100_d16_seed2_L8_mixedP50.pt  8L x 128w
+vae           checkpoints/vae_cap100_d16.pt
+condition     --corrupt final
+traces        2000 held-out corrupted pairs, B=7
+sampling      nfe 32, eta 1.0, erasure seed 0
+selection     ORACLE — the corrupted index is known. Upper bound.
+
+==============================================================================
+THE CENTRAL EXPERIMENT
+==============================================================================
+   condition    exact   RESULT  operands   formed   answer  preserved
+        none    14.3%    14.8%     87.0%    99.8%    14.3%      99.2%
+      causal     2.0%     3.8%      7.6%    99.6%     2.0%      99.2%
+      global     0.0%     0.9%      0.4%    94.8%     0.0%      99.2%
+
+==============================================================================
+  GAP (global - causal)   exact -2.0%   RESULT -2.8%   operands -7.2%
+==============================================================================
+  RESULT is the arm the experiment's logic points at: the corruption
+  changes a result, downstream steps consume the original value, so
+  downstream context identifies the RESULT and nothing else. Operands
+  are fixed by the question, and question conditioning (M5) is not
+  built — so a positive RESULT gap with a flat operands gap is exactly
+  the signature the claim predicts.
+  Positive -> regenerating with downstream context in view repairs
+  the corrupted block more reliably than regenerating causally. That
+  is the claim the whole repo was built to test.
+
+  Read as an UPPER BOUND: block selection is oracle here.
+
+  `none` IS NOT THE BASELINE FOR THESE ARMS. It measures the VAE
+  round-trip, not no-revision: the VAE was trained on valid arithmetic
+  only, so it projects an off-distribution corrupted step onto the
+  nearest valid one and silently repairs 19.6% of corruptions. The
+  regeneration arms erase the block and discard that free repair.
+  The reference is CHANCE — see scripts/m7_strata.py, which scores
+  every rate against a permutation null.
+
+PAIRED (McNemar) on RESULT: global-only 18, causal-only 75,
+  discordant 93, chi2(1) with continuity correction = 33.72
+  p < 0.05
+
+wrote 2000 records to runs/L8_s2_final.json
+
+EXAMPLES — same trace, same erasure, only the mask differs
+------------------------------------------------------------------------------
+  block 2  want '35 - 68 = -33'
+       causal  '34 - 45 = -11'
+       global  '63 - 55 = 18'
+  block 2  want '9 + 10 = 19'
+       causal  '59 - 54 = 5'
+       global  '69 - 69 = 3'
+  block 2  want '85 - 59 = 26'
+       causal  '23 - 85 = -58'
+       global  '88 - 65 = 23'
+  block 6  want '-78 - -54 = -24'
+       causal  '-84 - -52 = -27'
+       global  '-70 - -85 = 58'
+  block 3  want '75 - 56 = 19'
+       causal  '88 - 56 = 22'
+       global  '86 - 50 = 44'
+  block 3  want '83 - 75 = 8'
+       causal  '55 - 95 = -32'
+       global  '87 - 55 = 18'
+########## L8 seed2 DONE 17:48
+########## ALL DONE
