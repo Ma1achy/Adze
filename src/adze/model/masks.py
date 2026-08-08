@@ -137,3 +137,41 @@ def vectorised_regime_a_mask(block_ids: torch.Tensor) -> torch.Tensor:
     return torch.cat(
         [torch.cat([bd, obc], dim=1), torch.cat([zero, bc], dim=1)], dim=0
     )
+
+
+def banded_mask(block_ids: torch.Tensor, width: int) -> torch.Tensor:
+    """Bidirectional, but only within `width` blocks either side.
+
+    Position i attends j iff `|block(i) - block(j)| <= width`. At `width >= B`
+    this is exactly `build_mask(block_ids, MaskMode.GLOBAL)`; at `width = 0` it is
+    block-diagonal.
+
+    ## What it is for
+
+    The refine pass attends over the whole sequence at O(N^2). If the advantage
+    global regeneration carries comes only from nearby blocks, a band buys the
+    same effect at a fraction of the cost, and hierarchy drops from load-bearing
+    to optional in the endpoint design.
+
+    **What the band width tests changed on 8 Aug 2026.** It was written to check
+    whether `width = 2` matches full global, on the reading that the effect lived
+    inside a two-block window. That window turned out to be provenance
+    composition, not distance — within a fixed provenance class the advantage
+    survives at every distance the data can measure. So a band is now expected to
+    COST something, and the measurement asks how much, and where.
+
+    Args:
+        block_ids: [N] long, non-decreasing.
+        width: band half-width in BLOCKS, not positions. Must be >= 0.
+
+    Returns:
+        [N, N] bool. True means "position i may attend to position j".
+    """
+    if block_ids.ndim != 1:
+        raise ValueError(f"block_ids must be [N], got shape {tuple(block_ids.shape)}")
+    if (block_ids[1:] < block_ids[:-1]).any():
+        raise ValueError("block_ids must be non-decreasing")
+    if width < 0:
+        raise ValueError(f"width must be >= 0, got {width}")
+    delta = (block_ids.unsqueeze(0) - block_ids.unsqueeze(1)).abs()
+    return delta <= width
