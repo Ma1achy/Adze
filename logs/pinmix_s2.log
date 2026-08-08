@@ -1,0 +1,192 @@
+########## pinmix seed2 START 03:01
+config        configs/debug.yaml  (cap100)
+device        mps
+latents       (60000, 28, 16)  [n, N=B*K, D]  scale 0.7961
+              real positions 62.2%, std 1.0000, RMS norm 4.000 vs sqrt(D)=4.000
+params        1.46M
+shapes        B=7 K=4 D=16 N=28
+
+==========================================================================
+GATE — overfit one batch (8 examples, loss to near zero)
+==========================================================================
+  initial loss  1.956638
+  final loss    0.044255
+  per block (final / initial):
+    b=0  12.80%   <- no prefix; unconditional, floors above the rest
+    b=1   0.56%
+    b=2   0.49%
+    b=3   0.68%
+    b=4   0.41%
+    b=5   0.56%
+    b=6   0.62%
+  PASS — worst conditioned block 0.68% of initial (threshold 2%)
+
+regime A + B mix (50%/50%) — 20000 steps, batch 256, lr 0.001
+  step      1  loss 2.049403  block all  regime B steps 1
+  step   2000  loss 0.938897  block all  regime B steps 1001
+  step   4000  loss 0.703130  block all  regime B steps 2008
+  step   6000  loss 0.860648  block all  regime B steps 3012
+  step   8000  loss 0.813296  block all  regime B steps 4038
+  step  10000  loss 0.638314  block all  regime B steps 5027
+  step  12000  loss 0.841709  block all  regime B steps 6078
+  step  14000  loss 0.609737  block all  regime B steps 7081
+  step  16000  loss 0.607737  block all  regime B steps 8044
+  step  18000  loss 0.583306  block all  regime B steps 9019
+  step  20000  loss 0.826990  block all  regime B steps 10006
+
+trained in 1626.9s
+regime B      10006/20000 steps (50.0% realised, 50% requested)
+regime A      9994 steps
+checkpoint    checkpoints/denoiser_cap100_d16_seed2_L4_mixedP50_Spinmix.pt
+denoiser      checkpoints/denoiser_cap100_d16_seed2_L4_mixedP50_Spinmix.pt  4L x 128w
+vae           checkpoints/vae_cap100_d16.pt
+condition     --corrupt early
+traces        2000 held-out corrupted pairs, B=7
+sampling      nfe 32, eta 1.0, erasure seed 0
+selection     ORACLE — the corrupted index is known. Upper bound.
+
+==============================================================================
+THE CENTRAL EXPERIMENT
+==============================================================================
+   condition    exact   RESULT  operands   formed   answer  preserved
+        none    20.8%    21.7%     86.5%    99.9%    99.4%      98.8%
+      causal     0.2%     1.0%      0.8%   100.0%    99.4%      98.8%
+      global     0.0%     4.5%      0.1%    97.6%    99.4%      98.8%
+
+==============================================================================
+  GAP (global - causal)   exact -0.2%   RESULT +3.5%   operands -0.7%
+==============================================================================
+  RESULT is the arm the experiment's logic points at: the corruption
+  changes a result, downstream steps consume the original value, so
+  downstream context identifies the RESULT and nothing else. Operands
+  are fixed by the question, and question conditioning (M5) is not
+  built — so a positive RESULT gap with a flat operands gap is exactly
+  the signature the claim predicts.
+  Positive -> regenerating with downstream context in view repairs
+  the corrupted block more reliably than regenerating causally. That
+  is the claim the whole repo was built to test.
+
+  Read as an UPPER BOUND: block selection is oracle here.
+
+  `none` IS NOT THE BASELINE FOR THESE ARMS. It measures the VAE
+  round-trip, not no-revision: the VAE was trained on valid arithmetic
+  only, so it projects an off-distribution corrupted step onto the
+  nearest valid one and silently repairs 19.6% of corruptions. The
+  regeneration arms erase the block and discard that free repair.
+  The reference is CHANCE — see scripts/m7_strata.py, which scores
+  every rate against a permutation null.
+
+PAIRED (McNemar) on RESULT: global-only 89, causal-only 19,
+  discordant 108, chi2(1) with continuity correction = 44.08
+  p < 0.05
+
+wrote 2000 records to runs/Spinmix_s2_early.json
+
+EXAMPLES — same trace, same erasure, only the mask differs
+------------------------------------------------------------------------------
+  block 1  want '65 - 30 = 35'
+       causal  '64 - 50 = 4'
+       global  '85 - 50 = 35'
+  block 0  want '63 - 6 = 57'
+       causal  '78 - 55 = 13'
+       global  '89 - 50 = 26'
+  block 0  want '53 - 30 = 23'
+       causal  '78 - 59 = 18'
+       global  '82 - 50 = 33'
+  block 1  want '7 - 48 = -41'
+       causal  '39 - -37 = 66'
+       global  '54 - 80 = -17'
+  block 0  want '2 + 82 = 84'
+       causal  '59 - 83 = -34'
+       global  '52 + 50 = 88'
+  block 1  want '57 - 82 = -25'
+       causal  '93 - 53 = 35'
+       global  '83 - 60 = 37'
+denoiser      checkpoints/denoiser_cap100_d16_seed2_L4_mixedP50_Spinmix.pt  4L x 128w
+vae           checkpoints/vae_cap100_d16.pt
+condition     --corrupt final
+traces        2000 held-out corrupted pairs, B=7
+sampling      nfe 32, eta 1.0, erasure seed 0
+selection     ORACLE — the corrupted index is known. Upper bound.
+
+==============================================================================
+THE CENTRAL EXPERIMENT
+==============================================================================
+   condition    exact   RESULT  operands   formed   answer  preserved
+        none    14.3%    14.8%     87.0%    99.8%    14.3%      99.2%
+      causal     1.1%     2.9%      4.8%    98.9%     1.1%      99.2%
+      global     0.1%     1.1%      0.1%    89.5%     0.1%      99.2%
+
+==============================================================================
+  GAP (global - causal)   exact -1.0%   RESULT -1.9%   operands -4.7%
+==============================================================================
+  RESULT is the arm the experiment's logic points at: the corruption
+  changes a result, downstream steps consume the original value, so
+  downstream context identifies the RESULT and nothing else. Operands
+  are fixed by the question, and question conditioning (M5) is not
+  built — so a positive RESULT gap with a flat operands gap is exactly
+  the signature the claim predicts.
+  Positive -> regenerating with downstream context in view repairs
+  the corrupted block more reliably than regenerating causally. That
+  is the claim the whole repo was built to test.
+
+  Read as an UPPER BOUND: block selection is oracle here.
+
+  `none` IS NOT THE BASELINE FOR THESE ARMS. It measures the VAE
+  round-trip, not no-revision: the VAE was trained on valid arithmetic
+  only, so it projects an off-distribution corrupted step onto the
+  nearest valid one and silently repairs 19.6% of corruptions. The
+  regeneration arms erase the block and discard that free repair.
+  The reference is CHANCE — see scripts/m7_strata.py, which scores
+  every rate against a permutation null.
+
+PAIRED (McNemar) on RESULT: global-only 20, causal-only 58,
+  discordant 78, chi2(1) with continuity correction = 17.55
+  p < 0.05
+
+wrote 2000 records to runs/Spinmix_s2_final.json
+
+EXAMPLES — same trace, same erasure, only the mask differs
+------------------------------------------------------------------------------
+  block 2  want '35 - 68 = -33'
+       causal  '30 - 45 = -15'
+       global  '79 - 55 = 34'
+  block 2  want '9 + 10 = 19'
+       causal  '59 - 5 = 54'
+       global  '69 + 7 = 59'
+  block 2  want '85 - 59 = 26'
+       causal  '23 - 75 = -58'
+       global  '95 - 69 = 36'
+  block 6  want '-78 - -54 = -24'
+       causal  '-48 - -53 = -17'
+       global  '-88 - -5 = -77'
+  block 3  want '75 - 56 = 19'
+       causal  '61 - 46 = 16'
+       global  '86 - 50 = 44'
+  block 3  want '83 - 75 = 8'
+       causal  '67 - 92 = -35'
+       global  '85 - 59 = 38'
+vae           checkpoints/vae_cap100_d16.pt
+traces        2000 held-out corrupted pairs
+sampling      nfe 32, eta 1.0, erasure seed 0
+scoring       block b only, in both shapes, so the rows compare
+the point     under `suffix` the two arms see IDENTICAL information —
+              clean prefix, noise after. Any gap is the mode alone.
+
+========================================================================================
+denoiser_cap100_d16_seed2_L4_mixedP50_Spinmix.pt   B share 0.5   structure pinmix
+========================================================================================
+     shape   |S|   causal   global      gap  g formed  c formed
+    single  1.00     1.0%     4.5%    +3.5%     97.6%    100.0%
+    suffix  3.69     1.0%     0.7%    -0.3%     97.7%    100.0%
+  wrote 2000 records to runs/gating_denoiser_cap100_d16_seed2_L4_mixedP50_Spinmix.json
+    prefix      n    single causal    single global    suffix causal    suffix global
+         0    886            0.3%            5.5%            0.3%            0.8%
+         1    842            0.6%            4.2%            0.6%            0.7%
+         2    241            4.6%            2.5%            4.6%            0.0%
+
+  Chance on RESULT is 0.6-0.7% (permutation null, adze.eval.strata).
+  `single` is the reference condition; `suffix` is the test. Suffix
+  erasure destroys far more context, so both arms fall — the claim is
+  the GAP between them, where the information is now equalised.
+########## pinmix seed2 DONE 03:31
