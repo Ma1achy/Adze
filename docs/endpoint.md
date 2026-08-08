@@ -1,7 +1,15 @@
 # Adze — Endpoint (v2)
 
-**Status:** plan only. Gated on the v0 result (M7).
-**Relationship to the other docs:** `design.md` is the frozen v0 design; `build-plan.md` is its milestone sequence. This is what v0 becomes if M7 says the idea works. Nothing here is in scope until then.
+**Status:** plan only. **M7 HAS REPORTED** — see `RESULTS-2026-08-07.md` and
+`docs/paper.md`. Global regeneration does beat causal (+2.51pp ± 0.62 over six
+seeds, with the redirected-pin control), so the gate below is PASSED and this
+document is no longer waiting on it. It remains plan-only for every other reason:
+none of it is built.
+**Relationship to the other docs:** `design.md` is the frozen v0 design;
+`build-plan.md` is its milestone sequence. This is what v0 becomes now that M7 has
+answered. Two M7 results are already load-bearing here — the R-gating precondition
+in §3.3 and the mask-mode handicap in §3.2 — so the document is no longer
+independent of the measurement.
 
 ---
 
@@ -143,15 +151,31 @@ The first control mechanism should therefore be **entropy-gated stochasticity pl
 
 **PRECONDITION, measured 8 Aug 2026 — R > 1 is gated on per-block accuracy.**
 
-Iterative refinement only pays once a regenerated block is more often right than
-wrong. Below that threshold more passes destroy more than they fix, because a
-pass does not *transport* information through a neighbour — it replaces that
-neighbour with a fresh sample, and at low accuracy the sample is usually wrong.
+**The gate is EXPECTED UTILITY, not 50% block accuracy.** An earlier draft said
+refinement pays "once a regenerated block is more often right than wrong", and
+that is the wrong threshold in both directions: a replacement can be worthwhile
+well below 50% when the existing region is almost certainly wrong, and harmful
+well above 50% when collateral damage to neighbours is expensive. The condition
+is
 
-Measured on six checkpoints, three passes, erasing the target plus one neighbour:
-the aggregate effect falls **+2.51% -> +1.09% -> +0.93%** while `preserved` — the
-rate at which untouched blocks still match — collapses **0.10% -> 0.05% ->
-0.00%**. The non-propagating control (erase the target alone) is flat at
+```text
+E[ quality_after − quality_before | selector fires ] > 0
+```
+
+measured JOINTLY with damage to neighbouring and non-selected state, since that
+damage is the term the accuracy threshold was standing in for.
+
+**Scope: this was measured for one operator — erase the target plus a neighbour,
+regenerate both.** It does not rule out refinement operators that preserve their
+neighbours, and an operator that edits in place or re-noises partially would have
+to be measured separately rather than assumed to inherit the result.
+
+Measured on six checkpoints, three passes, under that operator: the aggregate
+effect falls **+2.51% -> +1.09% -> +0.93%** while `preserved` — the rate at which
+**non-target real blocks** still match, which under this operator includes the
+neighbour that was deliberately erased — collapses **0.10% -> 0.05% -> 0.00%**.
+(The earlier description of `preserved` as "untouched blocks" was wrong: the
+neighbour was erased on purpose, so it was never untouched.) The non-propagating control (erase the target alone) is flat at
 +2.51 / +2.52 / +2.46 with `preserved` at 98.8%, so the loss is the neighbours
 being overwritten, not the extra compute.
 
@@ -205,8 +229,21 @@ So: **select the blocks where the two paths disagree.**
 Why this is categorically different from the candidates already listed:
 
 - it is not a self-report. It compares two computations rather than asking the model how sure it is
-- a model can be confidently wrong and entropy will not catch it; it cannot be confidently wrong **in two independent ways that happen to agree**
 - most architectures cannot compute this. Adze can, because block-causal drafting and global refinement give it two paths to every block
+
+**It does NOT avoid confidence failure by construction, and the earlier claim that
+it did is withdrawn.** That claim — "it cannot be confidently wrong in two
+independent ways that happen to agree" — assumes independence the two estimates do
+not have: they share weights, share data, and share most of their inputs. Worse,
+M7 measured a **mask-mode handicap**, so causal/global disagreement can reflect
+mode specialisation rather than target error — the two arms differ systematically
+whether or not the target is wrong.
+
+So: compute both estimates **from exactly the same frozen carrier state**, and
+treat disagreement as a CANDIDATE FEATURE. Its gate is held-out error
+discrimination and downstream selection quality, measured against snapshot
+confidence, predictive entropy and random selection. If it does not beat those, it
+is not a selector.
 
 **Cost is one extra pass, not one per block** — a single global-mask forward yields the backward estimate for every position simultaneously.
 
@@ -227,7 +264,7 @@ Why this is categorically different from the candidates already listed:
 
 ## 4. Generated structure and refinement
 
-The genuinely novel part, and the only component with no reference implementation. LaDiR does refinement with fixed blocks; H-Net does learned segmentation without refinement. The intersection is unclaimed.
+LaDiR does refinement with fixed blocks; H-Net does learned segmentation without refinement. **The combination was not found in the reviewed literature** — which is the hedge `positioning.md` §4 requires, and is weaker than "unclaimed". Lead with the mechanism, not with priority: what matters is that refinement over learned segmentation has no reference implementation to copy, so its failure modes are unmapped.
 
 The problem has two parts:
 
@@ -256,7 +293,7 @@ Content keeps its identity when boundaries move. Block count follows from the bo
 
 ```
 p_active = 1 − p(ℓ_i = 0)
-a_hard   = 1[incoming ℓ_i > 0]
+a_hard   = a_route_i                    # the ACCUMULATOR, not the incoming ℓ
 a_st     = sg(a_hard − p_active) + p_active
 
 query_i = always enabled
@@ -266,7 +303,69 @@ pool_i  = a_st · pool(h_i)
 emit_i  = 1[ℓ_i > 0]
 ```
 
-Forward behaviour is exactly active or inactive; gradients still flow. Note `a_hard` uses the **incoming** state, the same circularity-breaking rule the mask uses for `b` (§4.5).
+Forward behaviour is exactly active or inactive; gradients still flow.
+
+**`a_hard` is the monotone ACCUMULATOR `a_route`, not `1[incoming ℓ_i > 0]`.** An
+earlier draft wrote the latter, which permits a position to deactivate on the next
+step and therefore does not implement the monotone default decided above — it
+implements the non-monotone one. The accumulator:
+
+```text
+a_route⁰   = active(proposal_ℓ)                       # from the bootstrap proposal
+a_routeˢ⁺¹ = a_routeˢ  OR  active(predicted_ℓˢ⁺¹)     # can only grow
+```
+
+`a_route` is what routing uses for the whole inner trajectory. **The final
+predicted `ℓ` may still commit a deletion after the trajectory ends**, which is
+where deletion capability lives — monotonicity is a property of the inner loop,
+not of the model's output. It is the same circularity-breaking rule the mask uses
+for `b` (§4.5), with an OR accumulated across steps.
+
+#### The three-layer structural state — define once, use everywhere
+
+`b` and `ℓ` now take an `UNKNOWN` value (§4.2), and **`UNKNOWN` cannot be fed to a
+mask, an activity gate or a packer.** Three distinct objects were previously
+written as one, and every path below must name which it uses:
+
+| layer | symbol | domain | who produces it | who consumes it |
+|---|---|---|---|---|
+| **observed corrupted token** | `s_b`, `s_ℓ` | `{0,1,UNKNOWN}`, `{0…L,UNKNOWN}` | the forward kernel | the denoiser, as INPUT only |
+| **current clean prediction** | `p_b`, `p_ℓ` | `[0,1]`, a distribution over `{0…L}` | the denoiser's heads | the soft mask, the ratio loss |
+| **committed routing state** | `c_b`, `a_route` | `{0,1}` | the commit rule (§4.6), the activity accumulator | packing, hard masks, `emit` |
+
+The rules that follow from it, and each is violated by at least one equation in an
+earlier draft:
+
+- **The attention mask uses `p_b` or `c_b`, NEVER `s_b`.** A mask built from a
+  channel that can be `UNKNOWN` is undefined at exactly the timesteps that matter
+  most.
+- **Packing uses `a_route`, NEVER `s_ℓ`.** Same reason: an `UNKNOWN` length cannot
+  decide whether a position emits.
+- **The corrupted tokens need EMBEDDINGS, not Fourier features.** `φ_b(·)` maps a
+  real noise level to a vector and cannot encode a categorical `UNKNOWN`. `s_b`
+  and `s_ℓ` get learned embedding tables over their categorical domains, including
+  a dedicated `UNKNOWN` row. Fourier features remain for the CONTINUOUS noise
+  levels `ν_b`, `ν_ℓ`, `ν_h` — which are always real-valued and always known,
+  since the schedule produces them.
+
+So the denoiser signature is, explicitly:
+
+```text
+(p_h, p_b, p_ℓ) = D_θ( h_t,                    # continuous, noised
+                       E_b(s_b), E_ℓ(s_ℓ),     # categorical embeddings
+                       routing,                # built from c_b / a_route
+                       c, cond )               # context, noise conditioning
+```
+
+**Where routing comes from depends on the path, and never on `s`:**
+
+```text
+direct-carrier:  routing = soft_mask(p_b_incoming, a_route)
+packed:          routing = hard_pack(c_b, a_route)
+```
+
+Both read the INCOMING prediction or the committed state, which is the same
+circularity-breaking rule §4.5 already applies to `b`.
 
 **Key/value gating describes the attention core.** The carrier is an SSM and has no separate key path — the equivalent there is gating a position's contribution *into the shared recurrence* while still letting it receive the scan's output, reapplied at every layer. See §5.4.
 
@@ -511,7 +610,12 @@ With binary boundaries this reduces **exactly** to bidirectional attention withi
 
 The mask depends on `b`; `b` is predicted from representations computed under the mask. Break it by building each mask from the *incoming* boundary state with gradients stopped through mask construction — the newly predicted field affects the following step.
 
-At maximum noise neither channel carries enough information to determine structure, so the **first function evaluation uses a fallback**: strict chunk-causal attention, or a fixed prior at the target block ratio. Subsequent evaluations use the predicted field.
+At maximum noise neither channel carries enough information to determine structure, so the **first function evaluation uses a fallback: strict chunk-causal attention.** Subsequent evaluations use the predicted field.
+
+**The "fixed prior at the target block ratio" option is removed.** `r*` is now
+per-example and derived from the clean structural target (§4.1), which does not
+exist at inference — so there is no target ratio to hold a prior at. Chunk-causal
+is the only fallback that is available in both settings.
 
 **Extent needs the same bootstrap, for a sharper reason.** At `t = T` every `ℓ_i` is unknown, so the model does not yet know which positions are active — and therefore cannot pack (§4.3). Two options:
 
@@ -574,8 +678,8 @@ projections — or small adapters — for the context and carrier roles. See
 `docs/decisions-2026-08-08.md` item 10.
 
 The shared frontend is initialised in Phase A and **stays frozen through Phases C
-and D**. The context projection trains from Phase C onward through the conditional
-denoising objective — it has no separate loss.
+and D** (see the phase table below). The context projection trains from Phase C
+onward through the conditional denoising objective — it has no separate loss.
 
 **Phase E, stated precisely, because the earlier wording left it ambiguous: the
 CONTEXT PATH USES THE ONLINE WEIGHTS, and the CARRIER TARGET USES THEIR EMA
@@ -583,14 +687,31 @@ COPY.** EMA exists to give the denoiser a slowly-moving target; the context
 encoder is not producing a diffusion target, so applying EMA to it would slow
 conditioning down for no reason.
 
+**EMA IS NOT A SEMANTIC BOUNDARY ANCHOR, and must not be used as one.** An EMA of
+the same trainable router stabilises the target but **drifts with it** — it is a
+low-pass filter on a moving quantity, not an independent reference, so it cannot
+detect the collapse it would be relied on to prevent. §4.6 requires boundary
+supervision to stay active as an anchor throughout; that anchor must be one of
+**ground truth (synthetic), an accepted pseudo-target, or the FROZEN Phase-B
+router**. EMA's job is separate and narrower: stabilising the LATENT target so the
+denoiser is not chasing a moving encoder.
+
 **Split into fully separate networks only if gradient conflict or validation
 quality demonstrates negative transfer** — not on the suspicion of it.
 
 If they end up as fully separate networks instead, the context encoder needs its own initialisation, objective, unfreezing rule and gate — four things the shared version gets for free.
 
-#### Phase C onward — one joint run with sampled regimes
+#### Phases C–E — one joint run with sampled regimes
 
-From here it is a single continuous training run. Every batch samples a regime; the mixture shifts over time.
+From here it is a single continuous training run. Every batch samples a regime; the mixture shifts over time. **C, D and E are stages of that one run, not separate runs**, and they are named here because the rest of the document refers to them individually and an earlier draft defined only "Phase C onward":
+
+| phase | what changes | encoder |
+|---|---|---|
+| **C** | conditional denoising; structure channels corrupted but boundaries not yet mutable at inference | frozen |
+| **D** | the joint run proper — boundary corruption, rollout alignment, the re-segmentation ladder | frozen |
+| **E** | boundaries and encoder unfrozen; EMA carrier target, online context path | trainable |
+
+The C→D transition is when the ladder starts climbing; the D→E transition is the unfreeze gated by §4.6's safeguards.
 
 One training step:
 
@@ -608,16 +729,22 @@ c = E_context(prompt)
 
 (h_t, b_t, ℓ_t) = corrupt(h₀, b₀, ℓ₀; ν_h, ν_b, ν_ℓ)      # typed kernels
 
-b_mask = sg(b_t) + γ_mask · (b_t − sg(b_t))
+# THREE LAYERS, per §4.1. s_* are the corrupted TOKENS and never route.
+s_b, s_ℓ  = corrupted structural tokens          # may be UNKNOWN
+p_b_in    = incoming clean prediction            # [0,1], from the previous step
+a_route   = monotone activity accumulator        # {0,1}
+c_b       = committed boundaries                 # {0,1}, changed only by §4.6
+
+b_mask = sg(p_b_in) + γ_mask · (p_b_in − sg(p_b_in))
 
 if direct_carrier:
-    routing_t = soft_mask(b_mask, activity_st(ℓ_t))
+    routing_t = soft_mask(b_mask, a_route)
     cond_t    = carrier_noise_embedding(ν_h, ν_b, ν_ℓ)
 else:
-    routing_t = hard_pack(b_t, ℓ_t)          # γ_pack / A_st path, if enabled
+    routing_t = hard_pack(c_b, a_route)      # γ_pack / A_st path, if enabled
     cond_t    = resample_noise(ν_h, ν_b, ν_ℓ, routing_t)
 
-(ĥ₀, b̂₀, ℓ̂₀) = D_θ(h_t, b_t, ℓ_t, routing_t, c, cond_t)
+(ĥ₀, p_b, p_ℓ) = D_θ(h_t, E_b(s_b), E_ℓ(s_ℓ), routing_t, c, cond_t)
 ```
 
 **The two branches must be written separately or `γ_mask` is dead code.** In the direct-carrier path `routing_t` is built from `b_mask`, so `γ_mask` genuinely controls whether content gradients reach `b`. In the packed path `routing_t` is built from `b_t` through a hard prefix sum — `γ_mask` cannot touch it, and only `γ_pack` could. A single `mask_or_pack(b_t, …)` call would silently disconnect `γ_mask` while appearing to use it, which is exactly the conflation §4.6 rules out.
@@ -820,7 +947,7 @@ Not hoped against. Monitored, throughout, with the specific check named:
 | Diffuse boundary mass at correct ratio | `E[b(1−b)]`, boundary entropy, mass concentration |
 | Edge-packing at correct ratio | boundary position histogram; mass in the first/last few positions |
 | `b` optimising receptive-field convenience | boundary quality vs. performance under fixed-boundary-count interventions |
-| Decoder ignoring `b` | perturb or replace boundaries, hold `h, ℓ` fixed, measure decode change |
+| ~~Decoder ignoring `b`~~ **Routing ignoring `b`** | The decode test as written is GUARANTEED to fire and tests nothing: the final decoder consumes `h` and `ℓ`, not `b`, so holding `h, ℓ` fixed and perturbing `b` must produce exactly zero byte change. What needs testing is whether the **denoiser/routing path** uses `b`: perturb `b`, RERUN REFINEMENT from the same incoming carrier state, and measure the change in the reconstruction it produces. Zero change there is the real failure. |
 | Decoder ignoring `ℓ` | perturb expansion lengths, hold `h, b` fixed |
 | Length leaking into `h` | remove or shuffle `ℓ`, measure retained reconstruction |
 | Zero-length scratch positions | ablate their hidden states and attention participation |
@@ -889,7 +1016,9 @@ carrier proposal / update  (sub-quadratic, over C)
 Stated explicitly, because this project has twice lost sessions to a metric measuring the wrong thing.
 
 - **Learned segmentation beats the heuristic on downstream quality at matched compute** — not on boundary F1. A router can win on boundary agreement while making generation worse.
-- **Mutable boundaries beat frozen boundaries across refinement iterations.** This is the re-segmentation ladder's rung 2 promoted from diagnostic to gate: refine under frozen boundaries, re-run the router on the result, and test whether boundary disagreement predicts where refinement still fails. If it doesn't, freeze and stop.
+- **Boundary disagreement predicts where refinement still fails.** This is the re-segmentation ladder's rung 2 promoted from diagnostic to gate: refine under frozen boundaries, re-run the router on the result, and test the correlation. If it doesn't hold, freeze and stop.
+
+  **Stated as a correlation deliberately.** A rung-2 correlation can justify BUILDING rung 3; it cannot establish that mutable boundaries beat frozen ones, because it never actually moves a boundary. That claim needs the matched-compute intervention — refine with boundaries mutable against refine with them frozen, same compute — and until that is run, "mutable beats frozen" is a hypothesis this test motivates rather than a result it delivers.
 
 Track throughout: task accuracy at matched NFE; boundary precision/recall with positional tolerance; boundary churn between iterations; split/merge rate; mean boundary displacement; fraction of content changes triggering distant boundary changes; quality after *each* iteration rather than only the last; and performance separated by unchanged / shifted / split / merged cases.
 
@@ -992,7 +1121,17 @@ Notation, fixed here and used throughout:
     └──→ ℓ-head    [B, C, L_max+1]        extent
 ```
 
-**Pool only when `C/M > K`.** At debug scale a reasoning step is ~3 chunks against `K = 4`, so pooling would *expand* — which is why §4.3 skips it there. At endpoint scale a step is ~11 chunks, giving ~2.75:1.
+**Pool only when `C/M > K`. With `K = 1` (§5.7's decision) this is satisfied
+almost everywhere, and the expansion claim below no longer holds.** The earlier
+text costed `K = 4`: at debug scale a reasoning step is ~3 chunks, so pooling
+would *expand*, which was the reason §4.3 skipped it there. At `K = 1` a 3-chunk
+step pools 3:1 rather than expanding, and an ~11-chunk endpoint step pools 11:1
+rather than ~2.75:1.
+
+**So `K = 1` changes the argument for skipping pooling at debug scale** — the
+reason is no longer that pooling expands, it is that §4.3's staged answer defers
+compaction until the scale transition regardless. If `K > 1` is ever revisited,
+this paragraph's arithmetic returns with it.
 
 ### 5.2 Byte frontend — SSM, not attention
 
@@ -1265,7 +1404,10 @@ If fixed-compute sharing succeeds, variable depth becomes a separate gated exper
   ν_ℓ ──→ fourier ─┘                     │
   mode  ──→ Embed ───────────────────────┼──→ ⊕ ──→ cond
   iter  ──→ Embed ───────────────────────┤
-  layer ──→ Embed ───────────────────────┤   ← optional ablation when L < 12
+  cycle ──→ Embed ───────────────────────┤   ← OPTIONAL cycle-index conditioning,
+                                         │     OFF by default (§5.6a). Not a
+                                         │     physical-layer index: that identity
+                                         │     is already in the weights.
   c     ──→ mean-pool ───────────────────┘
 ```
 
@@ -1277,7 +1419,7 @@ If fixed-compute sharing succeeds, variable depth becomes a separate gated exper
 ν_h  [B, C]        ν_ℓ  [B, C]        ν_b  [B, C−1]
 ```
 
-A master level may still be sampled **per clean block or per corruption region** and broadcast onto its carrier positions; the channel schedules (§4.8) apply elementwise. After packing, derive `cond_{m,k}` by resampling the member noise embeddings **with the same assignment weights that produce `z_{m,k}`**. Pooling Fourier embeddings preserves a block's mixed noise levels better than pretending it has one exact scalar.
+A master level may still be sampled **per clean block or per corruption region** and broadcast onto its carrier positions; the channel schedules (§4.8) apply elementwise. After packing, derive `cond_{m,k}` by resampling the member noise embeddings **with the same assignment weights that produce `z_{m,k}` — with `ν_b` EXEMPTED.** The boundary-edge channel is edge-indexed and pools by STRUCTURAL ROLE instead (left interface / internal / right interface, §5.6); the content assignment weights cover `[C]` positions and do not apply to `[C−1]` edges. Applying them there is the type error §5.6 exists to prevent. Pooling Fourier embeddings preserves a block's mixed noise levels better than pretending it has one exact scalar.
 
 Packed-summary conditioning remains block-local, but it is no longer per-block in the strict sense: different summaries `k` within one block may receive different pooled noise embeddings. The *sampling* happens in a coordinate system that survives boundary changes. (The simplest starting alternative is one scalar triplet per example. Either is coherent — `[B, M]` before mutable segmentation is not.)
 
@@ -1350,7 +1492,7 @@ Each stage ends with a measurement that decides whether the next is worth starti
 
 | # | Stage | Gate |
 |---|---|---|
-| 0 | **v0 result (M7)** | Does global regeneration beat causal? If not, none of the below matters. |
+| 0 | **v0 result (M7)** — **PASSED, 8 Aug 2026** | Does global regeneration beat causal? **Yes: +2.51pp ± 0.62 over six seeds, redirected-pin control, chance 0.63%.** The stage is closed; stage 1 is the head of the build order. |
 | 1 | COSMOS latent recipe | Interpolation probe improves; clustering statistic moves toward the null. |
 | 2 | Entropy-gated sampling | Beats uniform η at matched NFE. |
 | 3 | Scale — proper `v0.yaml` run, or rented compute | Do the small-scale conclusions survive? This is where the compute threshold for compaction is established, using existing fixed/heuristic blocks — learned hard packing only becomes available once stage 4 supplies router₂. |
