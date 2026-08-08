@@ -1,6 +1,34 @@
 # Scratchpad — extending the reach
 
-**Status:** research queue, partly executed. §1 and §5 have results (see §1a, §5a). Order below is fixed — work through it in sequence.
+**Status:** research queue, MOSTLY WRITTEN IN DEAD VOCABULARY. Read the banner below before using any item.
+
+---
+
+> ## ⚠ The window does not exist. Most of this queue asks about it anyway.
+>
+> §0 was run on 8 Aug 2026 and inverted the premise this document is built on.
+> **The distance window was operand-provenance composition**, not a reach limit.
+> Near cells are 76-92% both-leaves where global wins (+3.00%); far cells ~30%
+> both-from-earlier where causal wins (−2.86%). Composition with no distance term
+> reproduces the whole profile — residuals +0.12 / +0.03 / −0.57 / −0.47, all
+> inside their error bars. Within a fixed class the advantage survives at every
+> distance measured: **one-leaf at d = 4 is +2.59%, z = 3.00.**
+>
+> **There is no measured reach limit.** So:
+>
+> | item | status |
+> |---|---|
+> | §0 | **DONE, and it is the finding.** See RESULTS session 22. |
+> | §1, §1a | done — the loop degrades context faster than it propagates. Result stands; its framing as "reach compounding" does not. |
+> | §5, §5a | **§5a IS WITHDRAWN** — see the correction appended to it. Nothing survived three seeds. |
+> | §8 | ran; **unresolved**, and its rationale was "the window as a design parameter". Banding costs 27% for reasons that are not reach. |
+> | §2 | still blocked on router₂ and sections. |
+> | §3, §4, §6, §7 | **asked in dead vocabulary.** Each is phrased around widening a window, extending reach, or reaching wider offsets. Reword against provenance, or against a genuine distance profile from §9, before running any of them. |
+>
+> **§9 is the new head of the queue.** Nothing phrased in terms of distance can be
+> answered on data where distance is a proxy for something else.
+
+---
 
 ---
 
@@ -29,7 +57,9 @@ Near-term queue is therefore **§0, §1, §3, §4**. Everything else waits on co
 
 ---
 
-**Context:** the window is a **cliff**, not a gradient — d=1 z=6.06, d=2 z=4.21, d=3 z=0.75, d=4 z=0.67 over six seeds. Better supported than the effect size itself. Everything below is about whether that window can be widened, and whether it is a property of the model or of the task.
+**Context (SUPERSEDED, kept because everything below was written against it):** the window is a cliff, not a gradient — d=1 z=6.06, d=2 z=4.21, d=3 z=0.75, d=4 z=0.67 over six seeds; better supported than the effect size itself. Everything below is about whether that window can be widened.
+
+**What replaced it:** the cliff was composition. There is no window to widen. The effect is concentrated where the prefix underdetermines the step, and it holds at every distance the old generator could measure.
 
 ---
 
@@ -120,7 +150,17 @@ Nothing in §3's adaptive-`R` machinery currently says this. It should: **`R > 1
 
 ---
 
-## 5a. RESULT — depth deepens the window, it does not widen it
+## 5a. WITHDRAWN — depth deepens the window, it does not widen it
+
+> **Withdrawn 8 Aug 2026 at three seeds.** L8 vs L4 reaches |z| > 2 on nothing:
+> aggregate +0.61% (z 0.92), both-leaves +0.86% (z 0.86), one-leaf +0.63%
+> (z 1.09), both-from-earlier −3.20% (z −1.33). The seed-0 profile that this
+> section was written from (d=1 +4.15, d=2 +5.56) is **the third shape seed 0 has
+> supplied that failed to replicate**, after the pinmix slope and the smooth
+> decay. The d=4 collapse it reported was the CAUSAL arm rising, not global
+> falling — global is identical at 2.56% in both depths.
+>
+> Original text below, unedited.
 
 **L8, one seed, against the L4 six-seed reference:**
 
@@ -289,3 +329,47 @@ If the window is 2 because the **task's** dependencies reach 2, the right rule i
 Remaining order stands as listed. §8 stays where it is rather than being promoted — it is the item most likely to produce a positive result, and it gets stronger the more §5a holds.
 
 **And none of it blocks the writeup.** The finished result — six seeds, the redirected pin, the window at z>4, the conflict cut — has been ready for several sessions. Every session since has added qualifications rather than substance.
+
+
+---
+
+## 9. The decorrelating generator — NEW HEAD OF THE QUEUE
+
+**Built 8 Aug 2026.** `src/adze/data/decorrelated.py`, verified by
+`scripts/m9_decorrelation.py` and `tests/test_m9_decorrelated.py`. Not trained on.
+
+Every reach question in this document needs data where distance carries
+information that provenance does not. `generate.py` cannot provide it — a step
+with both operands from earlier steps roots a larger subtree, so post-order
+emission puts its consumer further away, and the two variables are welded
+together by construction rather than by sampling.
+
+**What was built.** Consumers are assigned BY DISTANCE, drawn per step from
+1..DISTANCE_MAX, and provenance class falls out as the emergent in-degree —
+how many other steps happened to choose you. The distance draw consults nothing
+about the step; the class is decided by other steps' draws. Two constructions
+were tried and rejected first, both recorded in the module docstring: greedy class
+choice couples them through position, and a fixed class schedule with uniform pool
+draws couples them because a step that consumes two results shrinks the pool it
+then competes in.
+
+**Verified, interior band, 4000 traces:**
+
+| | original | decorrelated |
+|---|---|---|
+| per-dof chi2, distance x provenance | 374.8 | **4.5** (82x flatter) |
+| composition-only swing across d | 2.23% | **0.23%** (10x smaller) |
+| usable distance range | 1..4 | **1..7** |
+| n at the furthest usable distance | 117 per 2000 traces | 2700 per 4000 |
+
+The swing is the number that matters: it is the largest distance profile
+composition alone could manufacture. Against a ~2.5pp effect, 0.23% cannot.
+
+**What it does not claim.** The ends are not clean and no construction makes them
+so — near either end, position bounds both variables. Those steps are EXCLUDED by
+the interior band, not repaired. Distances beyond DISTANCE_MAX exist only where
+capacity forced an overshoot and are excluded too.
+
+**Before anything trains on this:** traces are 14-18 steps against v0's B = 7, so
+B must roughly triple and N goes from 28 to ~72 positions. That is a real cost and
+a real change to the invariants, not a config tweak.
