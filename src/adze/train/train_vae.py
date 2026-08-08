@@ -21,6 +21,7 @@ import torch
 
 from adze.config import Config, load_config, trace_kwargs
 from adze.data.corrupt import make_pair
+from adze.data.build import make_dataset
 from adze.data.dataset import LatentCache, TraceDataset
 from adze.data.generate import Trace, generate_dataset
 from adze.data.tokeniser import MAX_STEP_LEN, CharTokeniser
@@ -40,17 +41,12 @@ def _split(
     config: Config, n_train: int | None = None, n_val: int | None = None
 ) -> tuple[list[Trace], list[Trace]]:
     """Train and held-out traces from disjoint seeds."""
-    tkw = trace_kwargs(config)
-    train = generate_dataset(
-        n=n_train if n_train is not None else config.data.n_train,
-        seed=config.data.seed,
-        **tkw,
-    )
-    val = generate_dataset(
-        n=n_val if n_val is not None else config.data.n_val,
-        seed=config.data.seed + 999_983,
-        **tkw,
-    )
+    train = make_dataset(
+        config, n_train if n_train is not None else config.data.n_train,
+        config.data.seed)
+    val = make_dataset(
+        config, n_val if n_val is not None else config.data.n_val,
+        config.data.seed + 999_983)
     return train, val
 
 

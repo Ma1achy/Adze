@@ -27,6 +27,18 @@ class DataConfig:
     # operand_max does not fix this for any value.
     leaf_distribution: str = "uniform"
     leaf_iterations: int = 5
+    # WHICH GENERATOR. "tree" is the original expression-tree/post-order builder,
+    # which welds distance-to-consumer to operand provenance by construction —
+    # every result through session 22 was measured on it. "decorrelated" assigns
+    # consumers by bounded distance so a distance profile means what it says.
+    # See adze.data.build. Change the config `name` alongside it: the two produce
+    # incompatible caches and checkpoints.
+    generator: str = "tree"
+    # decorrelated only. `chain_steps` is the exact step count, so B must be at
+    # least this; `distance_max` bounds the consumer draw and is what removes
+    # position from the distance distribution. Usable distances run 1..dmax-1.
+    chain_steps: int = 10
+    distance_max: int = 6
     # Ceiling on |result|, enforced when the operator is chosen. It sets the
     # CHARACTER of the task, not just its range: the leaf fixed point converges
     # against it, so cap 1000 produced three-digit arithmetic the denoiser could

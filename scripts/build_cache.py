@@ -17,6 +17,7 @@ import torch
 
 from adze.config import load_config, trace_kwargs
 from adze.data.corrupt import make_pair
+from adze.data.build import make_dataset
 from adze.data.dataset import LatentCache, TraceDataset
 from adze.data.generate import generate_dataset
 from adze.model.vae import build_vae
@@ -42,11 +43,7 @@ def main() -> None:
     vae.load_state_dict(state["model"])
     vae.eval()
 
-    traces = generate_dataset(
-        n=args.n_train,
-        seed=config.data.seed,
-        **tkw,
-    )
+    traces = make_dataset(config, args.n_train, config.data.seed)
     pairs = [make_pair(t, rng_seed=i) for i, t in enumerate(traces) if len(t.steps) >= 2]
     dataset = TraceDataset(
         pairs,

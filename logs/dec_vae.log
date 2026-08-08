@@ -1,0 +1,10 @@
+########## VAE START 18:43
+config        configs/dec10.yaml  (dec10)
+device        mps
+vocab         19 symbols, max_len 24
+params        1.74M
+train steps   400000 from 40000 traces
+held-out      40000 steps, 1030 unseen (2.6%)
+optimiser     60000 steps, batch 256, lr 0.0003, kl_beta 0.001
+
+  step      1  loss  4.0065  recon  3.9904  kl   16.074  held-out exact   0.0%

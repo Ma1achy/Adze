@@ -31,6 +31,7 @@ import torch
 from adze.config import load_config, trace_kwargs
 from adze.data.corrupt import corrupt_consistent, corrupt_final, make_pair
 from adze.eval.strata import consumer_distance, operand_provenance
+from adze.data.build import make_dataset
 from adze.data.dataset import LatentCache, TraceDataset
 from adze.data.generate import generate_dataset
 from adze.data.tokeniser import CharTokeniser
@@ -118,7 +119,7 @@ def main() -> None:
     build = CONSTRUCTORS[args.corrupt]
     pool, pairs = args.traces * 2, []
     while True:
-        traces = generate_dataset(n=pool, seed=config.data.seed + 909_091, **tkw)
+        traces = make_dataset(config, pool, config.data.seed + 909_091)
         kw = {"prefer_early": False} if (args.spread_index
                                          and args.corrupt == "early") else {}
         candidates = [build(t, rng_seed=i, **kw) for i, t in enumerate(traces)

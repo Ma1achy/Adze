@@ -23,9 +23,9 @@ The first result the whole repo is aimed at:
 ## Invariants — hold these everywhere
 
 ```
-B  = blocks per sequence      (fixed for v0)
+B  = blocks per sequence      (PER CONFIG — see the table below)
 K  = 4                        latents per block
-D  = 64                       latent channel dim
+D  = 16                       latent channel dim (best unseen-step recon, M2 sweep)
 N  = B * K                    total latent positions
 
 latents    : [batch, N, D]
@@ -33,6 +33,36 @@ timesteps  : [batch, B]       PER BLOCK, broadcast to K within the block
 block_ids  : [N]              which block each position belongs to
 mask       : [N, N]           bool, True = attend
 ```
+
+**B is per-config and the two configs are not interchangeable.**
+
+| config | generator | B | N | what it is for |
+|---|---|---|---|---|
+| `configs/debug.yaml` (`cap100`) | tree, post-order | 7 | 28 | everything through session 22 — all nine existing checkpoints and the six-seed reference |
+| `configs/dec10.yaml` (`dec10`) | decorrelated | 10 | 40 | anything measuring DISTANCE |
+
+**Never mix them.** A cache built under one and a checkpoint trained under the
+other produce latents that decode to nothing, and it presents as a model problem.
+The config `name` differs (`cap100` / `dec10`) so artefacts cannot collide.
+`adze.data.build.make_dataset` is the single dispatch point — go through it rather
+than calling `generate_dataset` directly.
+
+**Why `dec10` exists.** In the tree generator, distance-to-consumer is welded to
+operand provenance BY CONSTRUCTION: a step with both operands from earlier steps
+roots a larger subtree, so post-order emission puts its consumer further away. The
+distance "window" that headlined this repo was that composition. `dec10` assigns
+consumers by a bounded distance draw and lets provenance fall out as emergent
+in-degree.
+
+**Why B = 10 and not 18.** The requirement is that distance and provenance be
+independent WITHIN THE RANGE USED, not that the range be long. Measured across
+chain lengths 8-18, the composition-only swing is flat in chain length and driven
+by `distance_max` — bounding the draw is what removes position, and it works at
+any length with an interior. Chain 10 / dmax 6 gives swing 0.05pp against a ~2.5pp
+effect and usable distances 1..5, at 2.0x the attention cost rather than 6.6x.
+
+**`dec10` has no padding** — every trace is exactly 10 steps. The pad-free subset
+cut is therefore vacuous there, and the pad-attention confound cannot arise.
 
 **The per-block timestep is not standard DiT.** Vanilla DiT takes one scalar `t` per sample and broadcasts it globally. Regime B needs different blocks at different noise levels in the same forward pass. Build it in from the start — retrofitting means touching every conditioning path.
 

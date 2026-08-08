@@ -1,0 +1,58 @@
+# Decorrelated-generator config. B = 10, N = 40.
+#
+# WHY THIS EXISTS. Every result through session 22 was measured on the tree
+# generator, where distance-to-consumer and operand provenance are welded together
+# by construction: a step with both operands from earlier steps roots a larger
+# subtree, so post-order emission puts its consumer further away. The distance
+# "window" that headlined this repo was that composition, not a reach limit.
+#
+# WHY B = 10 AND NOT 18. The requirement is that distance and provenance be
+# independent WITHIN THE RANGE USED, not that the range be long. Measured over
+# chain lengths 8-18 the composition-only swing is flat in chain length and driven
+# by `distance_max` — bounding the consumer draw is what removes position, and it
+# works at any length with an interior. At chain 10 / dmax 6 the swing is 0.05pp
+# against a ~2.5pp effect, with usable distances 1..5 (the tree generator reached
+# 4) at 2.0x the attention cost instead of 6.6x.
+name: dec10
+
+data:
+  n_train: 100
+  n_val: 20
+  generator: decorrelated
+  chain_steps: 10             # every trace is exactly this long; no padding
+  distance_max: 6             # usable distances 1..5
+  max_depth: 3                # unused by the decorrelated builder; kept for schema
+  operand_max: 20
+  blocks_per_sequence: 10     # B — equals chain_steps, so nothing is dropped
+  seed: 0
+  # The fixed point is re-iterated against THIS generator's result distribution.
+  # Carrying the tree generator's pool across would reintroduce the input/output
+  # magnitude mismatch it exists to remove — 10 steps per trace and a different
+  # operand mix give a different result distribution.
+  leaf_distribution: empirical
+  leaf_iterations: 6
+  magnitude_cap: 100
+
+model:
+  latents_per_block: 4        # K
+  latent_dim: 16              # D
+  vae:
+    n_layers: 4
+    d_model: 128
+    n_heads: 4
+  denoiser:
+    n_layers: 4
+    d_model: 128
+    n_heads: 4
+
+train:
+  batch_size: 8
+  lr: 3.0e-4
+  steps: 500
+  regime_b_prob: 0.5
+  kl_beta: 1.0e-3
+
+sample:
+  nfe: 8
+
+device: mps

@@ -45,9 +45,10 @@ Four supporting stratifications, **all predicted before the data**:
   determines least (both-leaves), +2.10% ± 0.57 with one leaf, and **−2.86% ±
   1.29** where the prefix determines most (both-from-earlier, where causal
   recomputes the step at 9.1% against 0.6% chance).
-- **no measured reach limit.** The advantage holds at every distance the
-  generator produces — one-leaf at **d = 4, the furthest cell, is +2.59%
-  (z = 3.00)**. Nothing here bounds how far downstream evidence can be used from.
+- **no measured reach limit — over a range of four.** The advantage holds at
+  every distance the tree generator produces: one-leaf at **d = 4, the furthest
+  cell, is +2.59% (z = 3.00)**. That cell holds ~117 traces per seed, and d = 4 is
+  the maximum, so this is *not measured beyond four* rather than *shown absent*.
 - **distance to consumer was a proxy for provenance, not a separate finding.**
   Pooled, the profile reads +2.9 / +2.8 / +0.3 / +0.3 at d = 1…4 and looks like a
   window of two. But the near cells are 76–92% both-leaves and the far cells are

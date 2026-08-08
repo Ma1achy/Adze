@@ -137,6 +137,14 @@ the very cell that reads null when pooled.
 **There is no measured distance horizon out to d = 4.** Distance was a proxy for
 provenance.
 
+**And d = 4 is the maximum this generator produces.** "Every distance" means every distance
+the tree generator produces, and its furthest cell holds ~117 traces per seed. The
+statement is true and narrower than it sounds: nothing here rules out a reach
+limit at d = 6, or d = 10. A generator that decorrelates distance from provenance
+now exists (`src/adze/data/decorrelated.py`) and extends the clean range to
+d = 1..5; until a model is trained on it, "no measured reach limit" means *not
+measured*, not *shown absent*.
+
 This is a consolidation rather than a loss. It collapses what looked like two
 findings — a distance window and a source split — into one: global wins where the
 prefix determines least, causal wins where it determines most, and the "distance
@@ -270,7 +278,31 @@ We suggest that any distance or reach profile reported on structured reasoning
 data be accompanied by the same decomposition, and that a generator which
 decorrelates the two be used where a genuine reach claim is intended.
 
-## 11. Limitations
+## 11. Method note: why the interior band excludes the ends
+
+The decorrelating generator's cross-tab is reported over an **interior band** —
+steps at index >= 2 whose consumer draw has the full bounded range available. A
+reader is entitled to ask why the ends are dropped, and the answer is that the
+confound there is structural rather than statistical.
+
+Position bounds both variables, from opposite ends. A step at index 0 or 1 cannot
+have two operands from earlier steps, so its provenance class is constrained by
+where it sits. A step within `DISTANCE_MAX` of the end cannot have a distant
+consumer, so its distance is constrained by where it sits. Near either end the two
+variables are therefore both functions of position, and **no construction avoids
+it** — it is a property of laying a dependency structure on a linear order, not of
+this builder.
+
+Excluding those steps is honest; including them and adjusting would be
+fabrication. The band is defined before the data is generated, by the generator's
+own parameters rather than by anything measured, so it cannot be tuned to a
+result. Steps outside it are still generated, still trained on, and still valid —
+they are excluded from the *distance analysis* only, and their count is reported.
+
+The same applies to distances past `DISTANCE_MAX`, which occur only where capacity
+forced an overshoot. They are printed, flagged, and excluded from the swing.
+
+## 12. Limitations
 
 - **Scale.** GPT-2 scale at most; the reported configuration is 4 layers × 128
   wide with D = 16 latents. Nothing here establishes how the effect scales.
@@ -280,6 +312,10 @@ decorrelates the two be used where a genuine reach claim is intended.
   bounds on what uncertainty-steered selection could reach.
 - **Weak absolute performance.** ~5× chance. The mechanism is real and thinly
   exploited, and five training-signal interventions failed to move it.
+- **The measured distance range is 1 to 4, and the furthest cell is thin**
+  (~117 traces per seed). "The advantage holds at every distance measured" is a
+  statement about a short range, and is not evidence that no limit exists further
+  out.
 - **Distance and provenance are correlated in this generator**, and that is the
   main limitation. Near cells are 76-92% both-leaves and far cells ~30%
   both-from-earlier, so no distance range is available at fixed provenance. A
