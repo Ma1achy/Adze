@@ -19,7 +19,7 @@ A latent diffusion reasoner regenerates a corrupted reasoning step under two mas
 
 Supporting cuts, all predicted in advance:
 
-- **distance to consumer** — +3.7\*\*\* / +1.2 / −0.6 / −2.6 at d = 1…4. Decays to the handicap.
+- **distance to consumer** — over six seeds **+2.9 / +2.8 / +0.3 / +0.3** at d = 1…4 (z = 6.1, 4.2, 0.8, 0.7). Support extends two steps, then falls to nothing. The single-seed +3.7 / +1.2 / −0.6 / −2.6 profile read as a smooth decay to the handicap; that shape does not replicate.
 - **operand provenance** — both-leaves +3.1\*\*\* (prefix determines least) → both-from-earlier −6.1, where causal recomputes at 9.1% against 0.6% chance.
 - **pad-free subset** — gap is *larger* without padding (+2.9 vs +2.3). The confound is dead, retroactively too.
 - **chance** — RESULT 0.6–0.7%, operands 0.0%. Causal ~2× chance, global ~5×.
@@ -36,11 +36,11 @@ Supporting cuts, all predicted in advance:
 
 **Speculative Correction** (arXiv 2608.02625, July 2026) reports that *local refinement captures much of the gain on MBPP and MATH, while global provides a clear additional gain on GSM8K*. Scope-dependence, observed at the outcome level, task-dependent in a way they do not explain.
 
-**The distance decay is the explanation.** The benefit of seeing downstream is real but reaches only a step or two. That predicts exactly their finding — where the dependency structure is shallow, a local window captures everything and global adds nothing; where it reaches further, global adds.
+**The distance profile is the explanation.** The benefit of seeing downstream is real but reaches only a step or two — measured over six seeds, d = 1 and d = 2 are both strongly positive and d = 3 onward is null, so the cut-off is a cliff rather than a gradient. That predicts exactly their finding — where the dependency structure is shallow, a local window captures everything and global adds nothing; where it reaches further, global adds.
 
 This framing is better than a priority claim on three counts: it connects to published results rather than standing alone, it survives someone finding a precedent tomorrow, and it is a more useful contribution than a first.
 
-**Structure for the writeup:** lead with the mechanism and the decay. Cite Speculative Correction as convergent outcome-level evidence. Put the provenance-control novelty in **one hedged sentence in related work** — it does more there than as a headline.
+**Structure for the writeup:** lead with the mechanism and the distance profile. Cite Speculative Correction as convergent outcome-level evidence. Put the provenance-control novelty in **one hedged sentence in related work** — it does more there than as a headline.
 
 ---
 
@@ -95,7 +95,7 @@ Worth stating explicitly in the writeup, because ten stratifications after the f
 
 Every cut was called before the data:
 
-- distance decaying toward the handicap
+- support falling off with distance
 - provenance reversing where the prefix alone determines the step
 - the both-from-earlier cell going to causal
 - the redirected pin switching the advantage to the corrupted target

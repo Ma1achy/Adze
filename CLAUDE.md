@@ -166,6 +166,25 @@ nondeterminism. It cost several sessions to establish that the number came from 
 30k run. Actual MPS run-to-run drift on this gate is ~0.06pp. State the budget,
 state the spread over seeds, or the number is not a result.
 
+**Between-seed variance is the error bar for any comparison BETWEEN training
+runs.** Within-seed SE — binomial, from eval sampling — measures eval noise only
+and understates run-to-run uncertainty by roughly **2.2x** in this setup.
+Measured: between-seed sd 1.48pp on the prefix slope against a within-seed SE of
+0.46-0.90pp.
+
+Two single-seed runs can read as individually significant in OPPOSITE directions
+around a null mean. Seeds 1 and 2 of pinmix did exactly that (z = −2.07 and
+−2.41) while seed 0 read +1.42, mean −0.40pp, z = −0.47.
+
+**Three claims have been withdrawn for this:** the p = 0.50 mix optimum, the
+distance-reach extension, and the pinmix slope. A fourth was corrected — the
+distance profile's *shape* was a single-seed read (smooth decay); over six seeds
+it is a cliff, d = 1 and d = 2 alike and d >= 3 null.
+
+Within-run cuts on the same records — the redirected pin, the conflict cut, the
+provenance strata — are not affected by this rule. Generalising a within-run
+SHAPE to the model is, and needs seeds like anything else.
+
 ## Style
 
 - Type hints on public functions

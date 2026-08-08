@@ -41,7 +41,11 @@ stronger claim than one that merely disappears without it.
 
 Four supporting stratifications, **all predicted before the data**:
 
-- **distance to consumer** — +3.7 / +1.2 / −0.6 / −2.6 at d = 1…4. Decays.
+- **distance to consumer** — over six seeds: **+2.9 / +2.8 / +0.3 / +0.3** at
+  d = 1…4, with d = 1 and d = 2 both strongly positive (z = 6.1, 4.2) and
+  d = 3, d = 4 null. The reach is **a step or two, then a cliff** — not a
+  gradient. The single-seed profile once read as a smooth decay
+  (+3.7 / +1.2 / …) does not replicate; see RESULTS, session 20.
 - **operand provenance** — largest where the prefix determines least
   (both-leaves +3.1), inverted where it determines most (both-from-earlier:
   causal recovers the clean step at 9.1% against 0.6% chance).
@@ -98,9 +102,9 @@ all the variance. Three qualifications, stated rather than buried:
 ## Settled, provisional, and weak
 
 **Settled.** The mechanism. Downstream latent state causally supports
-reconstruction of an earlier erased block, the support decays with distance, and
-it reverses direction when the downstream evidence is redirected. The harness is
-validated against a stub denoiser, the null is measured rather than assumed, and
+reconstruction of an earlier erased block, the support extends about two steps
+and then falls to nothing, and it reverses direction when the downstream evidence
+is redirected. The harness is validated against a stub denoiser, the null is measured rather than assumed, and
 chance is a permutation null rather than an analytic guess.
 
 **Settled, as of six seeds.** The magnitude, at this configuration: +2.5pp ± 0.6pp
@@ -235,7 +239,7 @@ tests/      acceptance criteria, one module per milestone
 
 The plan documents in this repository **predate their results**, and that is
 visible only from the history. Every stratification above was named as a
-prediction before the data existed: distance decaying toward the handicap,
+prediction before the data existed: support falling off with distance,
 provenance reversing where the prefix alone determines the step, the
 both-from-earlier cell going to causal, and the redirected pin switching the
 advantage to the corrupted target. All four held.
@@ -255,9 +259,10 @@ they are not taken again.
 This is not framed as a first. The nearest published result — Speculative
 Correction (arXiv 2608.02625) — reports that local refinement captures much of
 the gain on some benchmarks while global helps clearly on others, task-dependent
-in a way it does not explain. The distance decay measured here is a candidate
+in a way it does not explain. The distance profile measured here is a candidate
 explanation: the benefit of seeing downstream is real but reaches only a step or
 two, so where dependency structure is shallow a local window captures everything.
+Measured over six seeds, that cut-off is sharp rather than gradual.
 
 See `docs/positioning.md` §3 for the prior-art survey and §4 for the claim
 wording, including the claims deliberately not made.
