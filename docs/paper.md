@@ -176,32 +176,35 @@ Where the pin is removed entirely — erasing everything after the target, so bo
 arms see identical information — global falls to chance while causal is
 unchanged.
 
-## 7. Convergent evidence
+## 7. Related work, and a claim withdrawn
 
 **Catruna & Radoi** (arXiv 2607.15893) study masked diffusion language models
 mechanistically and find previous-token and next-token pathways as separate
-layer-0 circuits, either able to steer the output alone. Their effective window
-is ~5 tokens: 0.03 → 2.28 → 4.29 nats at zero, one and two matching neighbours
-each side, with longer segments adding negligibly. Their conflict prompt gives
-near-equal probabilities to the two sources, and ablating either head tips it.
+layer-0 circuits, either able to steer the output alone, with an effective window
+of about ±2 tokens and a conflict prompt that splits near-equally between the two
+sources.
 
-**This convergence is now in doubt, and the honest position is that it is
-unresolved.** It was read as two settings finding the same ±2 window. If the
-window here is provenance wearing distance's clothes, the agreement may be
-coincidence. Their induction task plausibly carries the same confound — in
-random-token induction, how far away the matching position is and how much the
-left context determines the token are not obviously independent either. **Their
-window has not been checked for it.** Until it is, this is cited as a possible
-convergence and not as corroboration. Their circuit **copies** from a matching
-position where using the prefix here requires **recomputing** arithmetic, which
-was always the reason the two were not the same claim.
+**An earlier draft of this work cited that as convergent evidence — two settings
+independently finding a ±2 window. That claim is withdrawn.** The window here was
+not a distance effect, so there is no shared phenomenon for the two numbers to be
+evidence of, and their agreement is coincidence unless something else connects
+them. The paper stays in related work for the finding that does still touch this
+one: **separate pathways rather than one merged mechanism**, which is the same
+shape as the source split in §6, reached by a different method. Their circuit
+*copies* from a matching position where using the prefix here requires
+*recomputing* arithmetic, so even that is an analogy and not a replication.
 
 **Speculative Correction** (arXiv 2608.02625) reports that local refinement
 captures much of the gain on some benchmarks while global helps clearly on
-others, task-dependent in a way it does not explain. **The window is a candidate
-explanation**: where the dependency structure is shallow, a local view already
-contains everything the global view would add; where dependencies reach further,
-they fall outside the window and global adds what local cannot.
+others, task-dependent in a way it does not explain. **This work no longer offers
+an explanation of that result.** The window-based account — shallow dependencies
+fit inside a local view, deep ones fall outside it — was the natural reading of a
+distance profile that turned out to be provenance.
+
+A provenance-based account is *available* and is stated here as a conjecture
+rather than a finding: task-dependence would track how much of a task's reasoning
+each step's own prefix already determines, not how far its dependencies reach.
+Testing it needs their data cut by dependency type, which has not been done.
 
 ## 8. Negative results
 
@@ -246,7 +249,28 @@ Four confident wrong turns are also kept in the record with the reason each
 failed: live-dimension shrinkage, the sampler "reproducing the marginal", an
 exposure-bias story, and a prefix information estimate that was a kNN artifact.
 
-## 10. Limitations
+## 10. A methodological finding
+
+**In tree-structured reasoning tasks, distance-to-consumer is confounded with
+dependency type by construction.** A step whose operands both come from earlier
+steps sits higher in the expression tree; its subtree is larger; and in any
+evaluation order its own consumer is therefore further away. Distance and
+provenance are not independent, and collecting more data does not separate them.
+
+The consequence is specific and checkable: **a distance profile computed on such
+data will show a spurious window**, because the near cells are dominated by the
+dependency type where downstream evidence helps most and the far cells by the type
+where it helps least. This work found that window at z = 6.06 and z = 4.21 over
+six seeds and led with it.
+
+The correction is not more seeds. Six seeds is what made it look unassailable.
+**Replication fixes sampling noise; only decomposition fixes a confound.**
+
+We suggest that any distance or reach profile reported on structured reasoning
+data be accompanied by the same decomposition, and that a generator which
+decorrelates the two be used where a genuine reach claim is intended.
+
+## 11. Limitations
 
 - **Scale.** GPT-2 scale at most; the reported configuration is 4 layers × 128
   wide with D = 16 latents. Nothing here establishes how the effect scales.

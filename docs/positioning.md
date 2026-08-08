@@ -37,11 +37,15 @@ Supporting cuts, all predicted in advance:
 
 **Speculative Correction** (arXiv 2608.02625, July 2026) reports that *local refinement captures much of the gain on MBPP and MATH, while global provides a clear additional gain on GSM8K*. Scope-dependence, observed at the outcome level, task-dependent in a way they do not explain.
 
-**Prefix determination is the explanation.** The benefit of seeing downstream is concentrated where the *preceding* context underdetermines the step, and it reverses where the step is recomputable from what came before. That predicts their finding on a different axis than distance: where a task's steps are largely determined by their own prefix, a local view already has what global would add and global can subtract; where they are not, global carries it. **This replaces the earlier distance-window framing**, which was the same effect plotted against a correlated variable — see §1.
+**The distance-window explanation of their result is WITHDRAWN.** It read: shallow dependency structure fits inside a local window, deep structure falls outside it. The window was provenance composition, so the explanation goes with it.
+
+**A prefix-determination account is available as a CONJECTURE, and should be written as one.** Task-dependence would track how much of a task's reasoning each step's own prefix already determines — global carries a step the prefix underdetermines, and can subtract where the step is recomputable. Testing it needs their data cut by dependency type. Until then this work explains its own mechanism and does not explain theirs.
 
 This framing is better than a priority claim on three counts: it connects to published results rather than standing alone, it survives someone finding a precedent tomorrow, and it is a more useful contribution than a first.
 
-**Structure for the writeup:** lead with the mechanism and the provenance axis. Cite Speculative Correction as convergent outcome-level evidence. Put the provenance-control novelty in **one hedged sentence in related work** — it does more there than as a headline.
+**Structure for the writeup:** lead with the mechanism and the provenance axis. Cite Speculative Correction as an outcome-level observation this work does NOT explain — the explanation was withdrawn with the window. Put the provenance-control novelty in **one hedged sentence in related work**.
+
+**And carry the methodological finding, which is transferable and may outlast the mechanism.** In any tree-structured reasoning task, distance-to-consumer is confounded with dependency type BY CONSTRUCTION: a step whose operands both come from earlier steps sits higher in the tree, so its own consumer is further away. Distance and provenance are not independent and cannot be made so by collecting more data. **Anyone reporting a distance profile on such data without decomposing by provenance will find a spurious window** — this work found one at z = 6.06 and z = 4.21 over six seeds and believed it.
 
 ---
 
@@ -60,7 +64,7 @@ No exact precedent found for the control:
 | **Diffusion in Diffusion** — arXiv 2601.13599 | Revision block size, global receptive field, refinement ratio. ~90/10 small-block/global training exposure. | Evidence is output perplexity under different refinement scopes. Scope, mask and training config move together; no internal-state intervention. |
 | **LaDiR** — arXiv 2510.04573 | Decodes intermediate latents, varies refinement steps and block size, visualises trajectories. | Descriptive trajectory evidence plus end-task ablations. No causal intervention on a refinement step's latent state. |
 | **ProSeCo** — arXiv 2602.11590 | Corrector use, correction frequency, compute allocation. | Establishes correction improves outputs, not which internal path produces it. |
-| **Catruna & Radoi** — arXiv 2607.15893 | Mechanistic study of masked diffusion LMs. Separates previous-token and next-token pathways as distinct layer-0 circuits, either able to steer the output alone. Left-only 2.23 nats vs a matched AR model's 3.46; both-sides 4.39 ≈ the sum of the one-sided scores. Effective window ~5 tokens: 0.03 → 2.28 → 4.29 nats at zero, one and two matching neighbours each side, longer segments adding negligibly. Conflict prompt gives log p(A) − log p(B) of −0.01 to +0.32 across six models, against +2.1 to +2.8 when both windows agree; ablating either layer-0 head tips it. | **Verified against the paper** (read 8 Aug 2026; figures above are from the text). **The convergence is now IN DOUBT and should not be cited as corroboration until checked.** It rested on two settings finding the same ±2 window; the window here turned out to be provenance correlated with distance, so the agreement may be coincidence. Their random-token induction task plausibly carries the same confound — how far the matching position is and how much the left context determines the token are not obviously independent — and their window has not been checked for it. Two further reasons it was never the same claim. Their circuit **copies** from a matching position; using the prefix here requires **recomputing** arithmetic, so a null in this setting is not their result reappearing. And their own limitation section flags the task as synthetic random-token induction, which is further from natural reasoning traces than this setting is. |
+| **Catruna & Radoi** — arXiv 2607.15893 | Mechanistic study of masked diffusion LMs. Separates previous-token and next-token pathways as distinct layer-0 circuits, either able to steer the output alone. Left-only 2.23 nats vs a matched AR model's 3.46; both-sides 4.39 ≈ the sum. Effective window ~5 tokens. Conflict prompt gives log p(A) − log p(B) of −0.01 to +0.32 across six models against +2.1 to +2.8 when both windows agree; ablating either layer-0 head tips it. | **Verified against the paper** (read 8 Aug 2026). **The ±2 convergence claim is WITHDRAWN.** It rested on both settings finding a distance window; the window here was provenance composition, so there is no shared phenomenon for the two numbers to be evidence of. What still touches this work is the SEPARATE-PATHWAYS finding, which is the same shape as the source split reached by a different method — and even that is analogy, since their circuit *copies* from a matching position where the prefix here must be *recomputed*. |
 
 ### Method precedent exists, and should be cited
 
@@ -101,7 +105,9 @@ Every cut was called before the data:
 - the both-from-earlier cell going to causal
 - the redirected pin switching the advantage to the corrupted target
 
-All held. The pre-registration is part of the contribution, not just hygiene.
+All four held as PLOTS. The first did not hold as a CAUSE — decomposition showed provenance carrying it — and that is recorded rather than counted as a hit.
+
+The pre-registration is part of the contribution, not just hygiene. So is the correction: a six-seed result at z = 6.06 was withdrawn because replication does not repair a confound.
 
 ---
 

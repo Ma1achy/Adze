@@ -185,6 +185,26 @@ Within-run cuts on the same records — the redirected pin, the conflict cut, th
 provenance strata — are not affected by this rule. Generalising a within-run
 SHAPE to the model is, and needs seeds like anything else.
 
+**SIX SEEDS FIXES SAMPLING NOISE, NOT CONFOUNDING.** These are different
+failures and the second is not touched by the first.
+
+The smooth distance decay was withdrawn as a single-seed shape. The CLIFF replaced
+it as the six-seed version — d = 1 at z = 6.06, d = 2 at z = 4.21, d = 3 and d = 4
+null — and looked unassailable. It became the README headline, the paper's title,
+and positioning.md's framing.
+
+Both rested on a variable that was never clean. Distance-to-consumer is confounded
+with operand provenance BY CONSTRUCTION in a tree-structured generator: a step
+with both operands from earlier steps sits higher in the tree, so its consumer is
+further away. Near cells are 76-92% both-leaves (gap +3.00%); far cells are ~30%
+both-from-earlier (gap −2.86%). Composition with NO distance term predicts the
+whole profile, residuals +0.12 / +0.03 / −0.57 / −0.47, all inside their bars.
+
+**Replication does not repair a confound — decomposition does.** More seeds
+tightened the error bar around a biased estimate and made it more convincing. When
+a stratification looks strong, the question is not "how many seeds" but "what else
+varies across these cells".
+
 **SHAPE CLAIMS WAIT FOR SEEDS, even when the magnitude does not.** A monotone
 profile, a sign change, a decay, a crossing — these are the claims most worth
 having and the ones a single run is least able to support, because a shape is

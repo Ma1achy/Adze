@@ -45,6 +45,9 @@ Four supporting stratifications, **all predicted before the data**:
   determines least (both-leaves), +2.10% ± 0.57 with one leaf, and **−2.86% ±
   1.29** where the prefix determines most (both-from-earlier, where causal
   recomputes the step at 9.1% against 0.6% chance).
+- **no measured reach limit.** The advantage holds at every distance the
+  generator produces — one-leaf at **d = 4, the furthest cell, is +2.59%
+  (z = 3.00)**. Nothing here bounds how far downstream evidence can be used from.
 - **distance to consumer was a proxy for provenance, not a separate finding.**
   Pooled, the profile reads +2.9 / +2.8 / +0.3 / +0.3 at d = 1…4 and looks like a
   window of two. But the near cells are 76–92% both-leaves and the far cells are
@@ -267,13 +270,24 @@ they are not taken again.
 This is not framed as a first. The nearest published result — Speculative
 Correction (arXiv 2608.02625) — reports that local refinement captures much of
 the gain on some benchmarks while global helps clearly on others, task-dependent
-in a way it does not explain. The measurement here is a candidate explanation,
-though not the one first proposed: the benefit of seeing downstream is
-concentrated where the *preceding* context underdetermines the step. Where a step
-is recomputable from what came before, global adds nothing and can subtract; where
-it is not, global carries it. Task-dependence would then track how much of a
-task's reasoning is determined by its own prefix — not how far its dependencies
-reach.
+in a way it does not explain. An earlier draft of this README offered the
+distance window as the explanation. **That explanation is withdrawn with the
+window.** A provenance-based account is available as a conjecture — task
+dependence would track how much of a task's reasoning each step's own prefix
+determines — but testing it needs their data cut by dependency type, and nobody
+has done that.
+
+## A methodological finding, transferable beyond this work
+
+**In tree-structured reasoning tasks, distance-to-consumer is confounded with
+dependency type by construction.** A step whose operands both come from earlier
+steps sits higher in the tree, so its own consumer is further away. The two
+variables are not independent and no amount of extra data separates them.
+
+Anyone reporting a distance profile on such data without decomposing by
+provenance will find a spurious window. This repository found one, at z = 6.06
+and z = 4.21 over six seeds, made it the headline, and believed it for several
+days. Six seeds fixed the sampling noise and left the confound untouched.
 
 See `docs/positioning.md` §3 for the prior-art survey and §4 for the claim
 wording, including the claims deliberately not made.
