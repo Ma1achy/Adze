@@ -19,7 +19,8 @@ A latent diffusion reasoner regenerates a corrupted reasoning step under two mas
 
 Supporting cuts, all predicted in advance:
 
-- **distance to consumer** — over six seeds **+2.9 / +2.8 / +0.3 / +0.3** at d = 1…4 (z = 6.1, 4.2, 0.8, 0.7). Support extends two steps, then falls to nothing. The single-seed +3.7 / +1.2 / −0.6 / −2.6 profile read as a smooth decay to the handicap; that shape does not replicate.
+- **operand provenance is the axis** — +3.00% ± 0.29 both-leaves (prefix determines least), +2.10% ± 0.57 one-leaf, **−2.86% ± 1.29** both-from-earlier (prefix determines most, causal recomputes at 9.1% vs 0.6% chance).
+- **distance to consumer is a PROXY for provenance, not a second finding.** Pooled it reads +2.9 / +2.8 / +0.3 / +0.3 at d = 1…4 and looks like a window of two; composition with no distance term predicts +2.79 / +2.82 / +0.86 / +0.75, residuals +0.12 / +0.03 / −0.57 / −0.47, all inside their bars. Within a fixed class the advantage holds at every distance — one-leaf d = 4 is +2.59% (z = 3.00).
 - **operand provenance** — both-leaves +3.1\*\*\* (prefix determines least) → both-from-earlier −6.1, where causal recomputes at 9.1% against 0.6% chance.
 - **pad-free subset** — gap is *larger* without padding (+2.9 vs +2.3). The confound is dead, retroactively too.
 - **chance** — RESULT 0.6–0.7%, operands 0.0%. Causal ~2× chance, global ~5×.
@@ -36,11 +37,11 @@ Supporting cuts, all predicted in advance:
 
 **Speculative Correction** (arXiv 2608.02625, July 2026) reports that *local refinement captures much of the gain on MBPP and MATH, while global provides a clear additional gain on GSM8K*. Scope-dependence, observed at the outcome level, task-dependent in a way they do not explain.
 
-**The distance profile is the explanation.** The benefit of seeing downstream is real but reaches only a step or two — measured over six seeds, d = 1 and d = 2 are both strongly positive and d = 3 onward is null, so the cut-off is a cliff rather than a gradient. That predicts exactly their finding — where the dependency structure is shallow, a local window captures everything and global adds nothing; where it reaches further, global adds.
+**Prefix determination is the explanation.** The benefit of seeing downstream is concentrated where the *preceding* context underdetermines the step, and it reverses where the step is recomputable from what came before. That predicts their finding on a different axis than distance: where a task's steps are largely determined by their own prefix, a local view already has what global would add and global can subtract; where they are not, global carries it. **This replaces the earlier distance-window framing**, which was the same effect plotted against a correlated variable — see §1.
 
 This framing is better than a priority claim on three counts: it connects to published results rather than standing alone, it survives someone finding a precedent tomorrow, and it is a more useful contribution than a first.
 
-**Structure for the writeup:** lead with the mechanism and the distance profile. Cite Speculative Correction as convergent outcome-level evidence. Put the provenance-control novelty in **one hedged sentence in related work** — it does more there than as a headline.
+**Structure for the writeup:** lead with the mechanism and the provenance axis. Cite Speculative Correction as convergent outcome-level evidence. Put the provenance-control novelty in **one hedged sentence in related work** — it does more there than as a headline.
 
 ---
 
@@ -59,7 +60,7 @@ No exact precedent found for the control:
 | **Diffusion in Diffusion** — arXiv 2601.13599 | Revision block size, global receptive field, refinement ratio. ~90/10 small-block/global training exposure. | Evidence is output perplexity under different refinement scopes. Scope, mask and training config move together; no internal-state intervention. |
 | **LaDiR** — arXiv 2510.04573 | Decodes intermediate latents, varies refinement steps and block size, visualises trajectories. | Descriptive trajectory evidence plus end-task ablations. No causal intervention on a refinement step's latent state. |
 | **ProSeCo** — arXiv 2602.11590 | Corrector use, correction frequency, compute allocation. | Establishes correction improves outputs, not which internal path produces it. |
-| **Catruna & Radoi** — arXiv 2607.15893 | Mechanistic study of masked diffusion LMs. Separates previous-token and next-token pathways as distinct layer-0 circuits, either able to steer the output alone. Left-only 2.23 nats vs a matched AR model's 3.46; both-sides 4.39 ≈ the sum of the one-sided scores. Effective window ~5 tokens: 0.03 → 2.28 → 4.29 nats at zero, one and two matching neighbours each side, longer segments adding negligibly. Conflict prompt gives log p(A) − log p(B) of −0.01 to +0.32 across six models, against +2.1 to +2.8 when both windows agree; ablating either layer-0 head tips it. | **Verified against the paper** (read 8 Aug 2026; figures above are from the text). The strongest independent corroboration of the handicap and the short reach, and it arrives from mechanistic interpretability rather than from a refinement ablation. Two reasons it is not the same claim. Their circuit **copies** from a matching position; using the prefix here requires **recomputing** arithmetic, so a null in this setting is not their result reappearing. And their own limitation section flags the task as synthetic random-token induction, which is further from natural reasoning traces than this setting is. |
+| **Catruna & Radoi** — arXiv 2607.15893 | Mechanistic study of masked diffusion LMs. Separates previous-token and next-token pathways as distinct layer-0 circuits, either able to steer the output alone. Left-only 2.23 nats vs a matched AR model's 3.46; both-sides 4.39 ≈ the sum of the one-sided scores. Effective window ~5 tokens: 0.03 → 2.28 → 4.29 nats at zero, one and two matching neighbours each side, longer segments adding negligibly. Conflict prompt gives log p(A) − log p(B) of −0.01 to +0.32 across six models, against +2.1 to +2.8 when both windows agree; ablating either layer-0 head tips it. | **Verified against the paper** (read 8 Aug 2026; figures above are from the text). **The convergence is now IN DOUBT and should not be cited as corroboration until checked.** It rested on two settings finding the same ±2 window; the window here turned out to be provenance correlated with distance, so the agreement may be coincidence. Their random-token induction task plausibly carries the same confound — how far the matching position is and how much the left context determines the token are not obviously independent — and their window has not been checked for it. Two further reasons it was never the same claim. Their circuit **copies** from a matching position; using the prefix here requires **recomputing** arithmetic, so a null in this setting is not their result reappearing. And their own limitation section flags the task as synthetic random-token induction, which is further from natural reasoning traces than this setting is. |
 
 ### Method precedent exists, and should be cited
 
@@ -95,7 +96,7 @@ Worth stating explicitly in the writeup, because ten stratifications after the f
 
 Every cut was called before the data:
 
-- support falling off with distance
+- support falling off with distance — it does, though the decomposition later showed provenance carrying it: right about the plot, wrong about the cause
 - provenance reversing where the prefix alone determines the step
 - the both-from-earlier cell going to causal
 - the redirected pin switching the advantage to the corrupted target

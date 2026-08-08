@@ -1,4 +1,4 @@
-# Downstream latent state causally supports reconstruction of an earlier reasoning step, within a window of two
+# Downstream latent state causally supports reconstruction of an earlier reasoning step, where the prefix underdetermines it
 
 **Draft.** Markdown, not LaTeX. Numbers are from the committed record in
 `RESULTS-2026-08-07.md`; every figure here is traceable to a run in `runs/`.
@@ -94,26 +94,62 @@ so the variance claim was dropped rather than softened.
 against 0.63% chance. That is 5× chance, not 50×. The mechanism exists and is
 exploited weakly.
 
-## 5. The window: a cliff at two steps
+## 5. Where the advantage lives: provenance, not distance
 
-Stratifying the effect by the **distance from the erased block to the step that
-consumes its result**, over the same six seeds:
+Each step's operands are either literals or results of named earlier steps, so
+every step carries a known **provenance class** — how much of it the preceding
+context already determines. Over six seeds:
 
-| distance | mean gap | between-seed sd | z |
+| class | share | gap | ± SE |
 |---|---|---|---|
-| d = 1 | **+2.90%** | 1.17% | **+6.06** |
-| d = 2 | **+2.84%** | 1.65% | **+4.21** |
-| d = 3 | +0.29% | 0.94% | +0.75 |
-| d = 4 | +0.28% | 1.04% | +0.67 |
+| both-leaves — prefix determines least | 72% | **+3.00%** | 0.29 |
+| one-leaf | 23% | **+2.10%** | 0.57 |
+| both-from-earlier — prefix determines most | 5% | **−2.86%** | 1.29 |
 
-**This is the best-supported result in the work — better supported than the
-effect size itself.** d = 1 and d = 2 are strongly positive and statistically
-indistinguishable from each other; d = 3 and d = 4 are null.
+**The advantage is largest where the prefix is least informative and reverses
+where it is most informative.** In the both-from-earlier class a causal
+regeneration has everything it needs to recompute the step, and does so at 9.1%
+against 0.6% chance — global's extra view is not merely useless there, it costs.
 
-The shape is a **cliff, not a gradient**. An earlier single-seed read described a
-smooth decay (+3.7 / +1.2 / −0.6 / −2.6); that shape holds on one seed of six and
-was withdrawn. The registered prediction was "support falls off with distance",
-which held; "decays smoothly" was a description of one draw.
+### The distance profile was this effect in disguise
+
+Stratifying instead by the distance from the erased block to the step that
+consumes its result gives, over the same six seeds, +2.90 / +2.84 / +0.29 / +0.28
+at d = 1…4 — two strong distances and then nothing, which reads as a **window of
+two**. That was this work's headline for several days.
+
+It does not survive decomposition. The near and far cells have very different
+provenance mixes: d = 1 is 76% both-leaves and 0% both-from-earlier, while d = 4
+is 20% both-leaves and 31% both-from-earlier. Predicting each distance from its
+class mix alone, **with no distance term of any kind**:
+
+| d | observed | predicted from composition | residual |
+|---|---|---|---|
+| 1 | +2.90% ± 0.48 | +2.79% | +0.12% ± 0.48 |
+| 2 | +2.84% ± 0.68 | +2.82% | +0.03% ± 0.68 |
+| 3 | +0.29% ± 0.39 | +0.86% | −0.57% ± 0.39 |
+| 4 | +0.28% ± 0.42 | +0.75% | −0.47% ± 0.42 |
+
+Every residual is inside its error bar. And within a fixed class the advantage
+persists at every distance measured — one-leaf at **d = 4 is +2.59% (z = 3.00)**,
+the very cell that reads null when pooled.
+
+**There is no measured distance horizon out to d = 4.** Distance was a proxy for
+provenance.
+
+This is a consolidation rather than a loss. It collapses what looked like two
+findings — a distance window and a source split — into one: global wins where the
+prefix determines least, causal wins where it determines most, and the "distance
+decay" is what that looks like plotted against a variable correlated with
+provenance. One mechanism, two views.
+
+**Caveat on the decomposition's strength.** The class gaps and the distance
+profile come from the same records, so the inputs are not independent, and the
+thin cells (both-leaves at d = 4 is ~23 traces per seed) are not printed as rates.
+What the decomposition establishes is that distance adds nothing once provenance
+is known; it does not prove a horizon could never be found with a generator that
+decorrelates the two. That generator does not exist yet and building it is the
+obvious next measurement.
 
 ## 6. Disjoint sources
 
@@ -149,12 +185,16 @@ is ~5 tokens: 0.03 → 2.28 → 4.29 nats at zero, one and two matching neighbou
 each side, with longer segments adding negligibly. Their conflict prompt gives
 near-equal probabilities to the two sources, and ablating either head tips it.
 
-Two independent settings, at different granularities, with the same shape: a hard
-window of about ±2 and separate rather than merged pathways. Their circuit
-**copies** from a matching position; using the prefix here requires **recomputing**
-arithmetic, so the agreement is not one result appearing twice. Their conflict
-finding is near-*equality*; the split here is directional, with each arm
-committed to a different source.
+**This convergence is now in doubt, and the honest position is that it is
+unresolved.** It was read as two settings finding the same ±2 window. If the
+window here is provenance wearing distance's clothes, the agreement may be
+coincidence. Their induction task plausibly carries the same confound — in
+random-token induction, how far away the matching position is and how much the
+left context determines the token are not obviously independent either. **Their
+window has not been checked for it.** Until it is, this is cited as a possible
+convergence and not as corroboration. Their circuit **copies** from a matching
+position where using the prefix here requires **recomputing** arithmetic, which
+was always the reason the two were not the same claim.
 
 **Speculative Correction** (arXiv 2608.02625) reports that local refinement
 captures much of the gain on some benchmarks while global helps clearly on
@@ -192,7 +232,9 @@ Every stratification in §3 and §5 was named as a prediction before the data
 existed, and the plan documents in the repository **predate their results** —
 visible in the commit history:
 
-- support falling off with distance
+- support falling off with distance (it does — though the decomposition
+  later showed provenance carrying it, and the registered prediction was
+  therefore right about the plot and wrong about the cause)
 - provenance reversing where the prefix alone determines the step
 - the both-from-earlier cell going to causal
 - the redirected pin switching the advantage to the corrupted target
@@ -207,16 +249,18 @@ exposure-bias story, and a prefix information estimate that was a kNN artifact.
 ## 10. Limitations
 
 - **Scale.** GPT-2 scale at most; the reported configuration is 4 layers × 128
-  wide with D = 16 latents. Nothing here establishes that the window persists,
-  widens or vanishes with depth or width.
+  wide with D = 16 latents. Nothing here establishes how the effect scales.
 - **Data.** Synthetic arithmetic with exactly-known provenance. That is what makes
   the intervention possible and it is also the main threat to external validity.
 - **Oracle selection.** The corrupted index is known. All figures are upper
   bounds on what uncertainty-steered selection could reach.
 - **Weak absolute performance.** ~5× chance. The mechanism is real and thinly
   exploited, and five training-signal interventions failed to move it.
-- **One dependency structure.** Distance is measured to the *first* consumer; the
-  data's chains are short, so d = 4 cells are thin (~117 traces per seed).
+- **Distance and provenance are correlated in this generator**, and that is the
+  main limitation. Near cells are 76-92% both-leaves and far cells ~30%
+  both-from-earlier, so no distance range is available at fixed provenance. A
+  generator that decorrelates them is what would settle whether any horizon
+  exists at all.
 
 ## Claim wording
 
