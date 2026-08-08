@@ -1,0 +1,11 @@
+########## DEN60 START 21:36
+config        configs/dec10.yaml  (dec10)
+device        mps
+latents       (40000, 40, 16)  [n, N=B*K, D]  scale 0.7989
+              real positions 100.0%, std 1.0000, RMS norm 4.000 vs sqrt(D)=4.000
+params        1.46M
+shapes        B=10 K=4 D=16 N=40
+
+==========================================================================
+GATE — overfit one batch (8 examples, loss to near zero)
+==========================================================================

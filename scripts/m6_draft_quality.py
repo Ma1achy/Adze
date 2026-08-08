@@ -33,7 +33,7 @@ import torch
 
 from adze.config import load_config, trace_kwargs
 from adze.data.dataset import LatentCache
-from adze.data.generate import generate_dataset
+from adze.data.build import make_dataset
 from adze.data.tokeniser import CharTokeniser
 from adze.eval.checks import unseen_ceiling_by_magnitude
 from adze.eval.draft_quality import sample_draft
@@ -74,12 +74,11 @@ def main() -> None:
     vae, _ = load_vae(args.vae, device)
 
     train_texts = {
-        s.render() for t in generate_dataset(n=60_000, seed=config.data.seed, **tkw)
+        s.render() for t in make_dataset(config, 60_000, config.data.seed)
         for s in t.steps
     }
     held = [
-        s.render() for t in generate_dataset(
-            n=8_000, seed=config.data.seed + 909_091, **tkw) for s in t.steps
+        s.render() for t in make_dataset(config, 8_000, config.data.seed + 909_091) for s in t.steps
     ]
     ceiling = unseen_ceiling_by_magnitude(vae, tokeniser, train_texts, held)
     real_unseen = [t for t in held if t not in train_texts]

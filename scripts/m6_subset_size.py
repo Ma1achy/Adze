@@ -48,7 +48,7 @@ import torch
 from adze.config import load_config, trace_kwargs
 from adze.data.corrupt import make_pair
 from adze.data.dataset import LatentCache, TraceDataset
-from adze.data.generate import generate_dataset
+from adze.data.build import make_dataset
 from adze.data.tokeniser import CharTokeniser
 from adze.eval.central import _decode, _parse, encode_traces, regenerate, score
 from adze.eval.load import load_denoiser, load_vae
@@ -98,8 +98,7 @@ def main() -> None:
     tokeniser = CharTokeniser()
     vae, _ = load_vae(args.vae, device)
 
-    traces = generate_dataset(n=args.traces * 2, seed=config.data.seed + 909_091,
-                              **tkw)
+    traces = make_dataset(config, args.traces * 2, config.data.seed + 909_091)
     pairs = [make_pair(t, rng_seed=i) for i, t in enumerate(traces)
              if len(t.steps) >= 2][: args.traces]
 
