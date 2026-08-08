@@ -274,7 +274,22 @@ Forward behaviour is exactly active or inactive; gradients still flow. Note `a_h
 
 **What the gating does and does not buy.** It prevents an inactive position acting as *shared* scratch space: it computes for itself, and nothing reads from it. But it does **not** prevent transient scratch use — a position can activate, export information to its neighbours, and deactivate again before the final decode, paying no emitted byte at all. That costs transient computation, not output length.
 
-If that is undesirable, either commit activity **monotonically within an inner trajectory** (once active, stays active until the trajectory ends) or accept it explicitly as latent scratch capacity with its own accounting. Do not assume it away.
+**DEFAULT: MONOTONE ROUTING.** Routing activity may only *grow* during an inner
+trajectory — once active, a position stays active until the trajectory ends —
+while the **final `ℓ` prediction may still commit a deletion afterwards**, so
+deletion capability survives intact. Decided; the source recommended the opposite
+default and it was reversed on the way in.
+
+The reasoning for the reversal: transient scratch is a capability to acquire
+**deliberately**, and starting permissive means you can never afterwards tell
+whether performance depends on it. A model that has had a free scratch channel
+from the first step will have learned to use it, and removing it later measures
+withdrawal rather than value. Starting monotone and relaxing is a test; starting
+permissive and restricting is a confound.
+
+**Non-monotone activity becomes the ABLATION**, run only if monotone
+underperforms — and if it is adopted, the transient active-slot compute is
+accounted for explicitly rather than treated as free.
 
 A categorical `UNKNOWN`/`MASK` length state stays query-active on the same reasoning.
 
@@ -294,6 +309,43 @@ L_ratio   = (r_eff − r*)²
 
 Skip the term when fewer than two chunks emit.
 
+**`r*` IS PER-EXAMPLE, NOT A GLOBAL CALIBRATED SCALAR. Decided — see
+`docs/decisions-2026-08-08.md` §6.** This replaces the earlier framing of `r*` as a
+hyperparameter "calibrated from clean data", which was wrong in a way worth
+naming: during training the clean structural target already exists, so the
+appropriate compression for each example is known rather than guessed.
+
+```text
+r*_n    = stopgrad(r_eff(b₀_n, ℓ₀_n))
+
+L_ratio = mean_n (r_eff(b̂₀_n, stopgrad(ℓ₀_n)) − r*_n)²
+```
+
+Sources for the clean target, by stage:
+
+- synthetic — ground-truth boundaries;
+- natural text — the frozen Phase-B router, or an accepted pseudo-target;
+- after unfreezing — the EMA target encoder/router.
+
+**Use TARGET activity in this loss, not predicted activity.** `r_eff` depends on
+which chunks emit, so if `ℓ̂` were used, `ℓ` could compensate for a bad `b` by
+hiding boundary mass in positions it then marks inactive — the internal-hole
+exploit, re-entering through the loss that exists to prevent it. Hence
+`stopgrad(ℓ₀_n)` on the prediction side.
+
+Keep the fully predicted `r_eff(b̂, ℓ̂)` as the **deployment diagnostic**; it is
+what inference actually produces and it is not what the loss should optimise.
+
+This preserves natural variation in block count instead of pulling every example
+toward one ratio. **If deployment needs a fixed compute budget, add it as a
+separate batch-level constraint** — a compute target and a semantic segmentation
+target are different objects and conflating them is what made `r*` look like a
+mystery hyperparameter.
+
+H-Net specifies a desired downsampling factor `N` and drives the selected fraction
+toward `1/N`. Adze can use the stronger per-example target precisely because Phase
+B already supplies clean boundaries.
+
 **Note `c_m = 1 − S(i_m, i_{m+1})`** — the same no-cut product the attention mask uses (§4.4). The loss and the mask now read the same quantity, so they cannot drift apart: whatever the mask treats as one block is exactly what the ratio counts as unseparated.
 
 This is not a reversal of the coordinate rule. `b` still lives on carrier edges and its *meaning* never depends on `ℓ`. What depends on `ℓ` is the *loss* — deliberately, because a boundary field should be judged on whether it separates the chunks that actually participate in computation. Keep raw edge-mass ratio as a diagnostic or weak prior.
@@ -309,8 +361,47 @@ Output structure decomposes into three questions, and the boundary field answers
 One backbone, three typed input channels, three prediction heads. The channels share contextual computation but **need not share a corruption process**:
 
 - `h` — continuous flow matching
-- `b` — Bernoulli, logit-space, or absorbing
-- `ℓ` — categorical or ordinal
+- `b` — **absorbing categorical** (decided, below)
+- `ℓ` — **absorbing categorical** (decided, below)
+
+**Both structural channels use ABSORBING CATEGORICAL corruption. Decided — see
+`docs/decisions-2026-08-08.md` §4.**
+
+```text
+b_t = b₀       with probability 1 − ν_b
+      UNKNOWN  with probability ν_b
+
+ℓ_t = ℓ₀       with probability 1 − ν_ℓ
+      UNKNOWN  with probability ν_ℓ
+```
+
+and predict clean `b₀`, `ℓ₀` categorically. The reason is that **it matches
+generation, which begins from unknown structure, and it avoids inventing a metric
+over boundary states** — there is no natural distance between "boundary here" and
+"boundary one position left" that a corruption kernel could honestly use.
+Absorbing-state kernels are the standard discrete-diffusion construction (D3PM)
+and underpin modern masked diffusion.
+
+**Incorrect-but-known structural states are taught separately**, by rollout
+regimes rather than by the forward kernel: boundary insertion, deletion and shift;
+zero/nonzero extent errors; incorrect positive lengths; and model-generated `b`
+and `ℓ`. That split is a feature — **the forward kernel teaches inference from
+uncertainty, the structured corruption teaches correction of committed
+mistakes**, and they are different skills. Edit-based models likewise treat
+insertion and deletion as explicit operations rather than as ordinary categorical
+noise.
+
+**No ordinal `ℓ` kernel initially.** Absorbing categorical is the assumption-free
+baseline; an ordinal kernel asserts that nearby lengths are nearby targets, which
+is an extra assumption to justify rather than a free improvement. Factor
+`P(ℓ = 0)` from `P(ℓ > 0)` later, and only if existence errors turn out to
+dominate.
+
+*(One argument for this that appears in the source and is NOT relied on here: that
+a one-byte length error changes alignment discontinuously. During training the
+decoder is teacher-forced against the true trace, so length errors do not cascade
+the way they would at generation, and the claim is weaker than it sounds. The
+conclusion does not need it.)*
 
 Draft-versus-refine, outer iteration count, erasure ratio, entropy-gated stochasticity and boundary-commit rules are **sampling policies**, not separate models. The backbone is trained across mask modes and adapted to its own rollouts; nothing else needs its own weights.
 
@@ -354,7 +445,15 @@ heavy denoiser over M
 
 If a given regime uses fully dense soft pooling instead, **say so** — that regime does not receive the compaction saving and only hard inference does.
 
-Batching note: `M` varies per example, so packing needs ragged or nested tensors, or padding to max-in-batch. Padding to batch-max still beats padding to buffer-`C`; the saving is real but not perfect.
+**Batching — decided: BUCKET BY `M`, THEN PAD WITHIN THE BATCH.** See
+`docs/decisions-2026-08-08.md` item 11. `M` varies per example, so packing needs
+ragged or nested tensors, or padding to max-in-batch. Bucketing examples by packed
+block count first and padding to the bucket's maximum is simple and reliable, and
+padding to batch-max already beats padding to buffer-`C`.
+
+**Move to true ragged or variable-length kernels only when profiling shows the
+padding is material** — the saving is real but not perfect, and ragged kernels
+carry their own correctness burden.
 
 **Straight-through does not automatically survive packing.** Straight-through works because the hard and soft tensors have the *same shape*. A ragged pack changes shape from `C` chunks to `M` blocks — autograd cannot differentiate prefix-sum indices, nor the appearance of a block slot that wasn't in the forward pass. "Hard forward, soft backward" is not free here; it needs a formulation.
 
@@ -470,7 +569,22 @@ The corrected diagram introduces a **context encoder** (reads the prompt, produc
 - context path — a conditioning projection on top of the shared frontend
 - carrier path — the `h, b, ℓ` target heads and the decoder
 
-The shared frontend is initialised in Phase A. The context projection trains from Phase C onward through the conditional denoising objective — it has no separate loss. **EMA applies only to the carrier target encoder in Phase E**, not to the context encoder, which isn't producing a moving diffusion target.
+**DECIDED: keep the shared byte/router₁ frontend**, with separate norms and
+projections — or small adapters — for the context and carrier roles. See
+`docs/decisions-2026-08-08.md` item 10.
+
+The shared frontend is initialised in Phase A and **stays frozen through Phases C
+and D**. The context projection trains from Phase C onward through the conditional
+denoising objective — it has no separate loss.
+
+**Phase E, stated precisely, because the earlier wording left it ambiguous: the
+CONTEXT PATH USES THE ONLINE WEIGHTS, and the CARRIER TARGET USES THEIR EMA
+COPY.** EMA exists to give the denoiser a slowly-moving target; the context
+encoder is not producing a diffusion target, so applying EMA to it would slow
+conditioning down for no reason.
+
+**Split into fully separate networks only if gradient conflict or validation
+quality demonstrates negative transfer** — not on the suspicion of it.
 
 If they end up as fully separate networks instead, the context encoder needs its own initialisation, objective, unfreezing rule and gate — four things the shared version gets for free.
 
@@ -508,7 +622,27 @@ else:
 
 **The two branches must be written separately or `γ_mask` is dead code.** In the direct-carrier path `routing_t` is built from `b_mask`, so `γ_mask` genuinely controls whether content gradients reach `b`. In the packed path `routing_t` is built from `b_t` through a hard prefix sum — `γ_mask` cannot touch it, and only `γ_pack` could. A single `mask_or_pack(b_t, …)` call would silently disconnect `γ_mask` while appearing to use it, which is exactly the conflation §4.6 rules out.
 
-**`edge_lift` is a policy that has to be stated.** `τ` is position-indexed `[C]` and `ν_b` is edge-indexed `[C−1]`, so a lift is required — maximum, mean, or an independently sampled edge field. **Maximum** is the natural default for local erasure: if either adjacent chunk is being touched, the edge between them is structurally uncertain.
+**`edge_lift` = MAX. Decided — see `docs/decisions-2026-08-08.md` §1.** `τ` is position-indexed `[C]` and `ν_b` is edge-indexed `[C−1]`, so a lift is required.
+
+```text
+q_i    = τ_i^α
+ν_b[k] = max(q_k, q_{k+1})
+```
+
+Four reasons, and the second is the one that rules out the alternatives:
+
+- if either endpoint is touched, their relationship is uncertain;
+- `max(x,x) = x`, so a uniformly noised region does not acquire artificially *higher* edge noise, which mean-of-squares or a sum would;
+- mean gives only 0.5 noise when one endpoint is completely erased — wrong, since a fully erased endpoint leaves the edge fully uncertain;
+- an independently sampled edge field breaks the intended coupling between content corruption and structural uncertainty, which is the whole point of deriving `ν_b` from `τ`.
+
+For realised local-erasure masks, the corresponding hard rule:
+
+```text
+edge_touched[k] = position_touched[k] OR position_touched[k+1]
+```
+
+**Bootstrap needs no special case.** If every position carries maximal noise, max and mean agree, and the explicit `UNKNOWN` state (§4.6) is doing the real bootstrap work rather than the lift.
 
 All four losses applied together. **Pass all three noise levels explicitly** — a single scalar `t` is ambiguous once the channels run on different schedules (§4.8).
 
@@ -586,6 +720,52 @@ Rung 2 is the cheapest and most informative: if boundaries barely move, or movem
 
 Whatever constrained-commit rule inference uses must also appear in the rollout regime — otherwise the model never trains on the boundaries it will actually see.
 
+#### The commit rule — hysteresis, once per outer iteration
+
+**Decided — see `docs/decisions-2026-08-08.md` §5.** Two objects are maintained:
+continuous proposed probabilities `p_b`, and committed hard boundaries `c_b` used
+for packing. **The hard partition is never altered during an inner flow
+trajectory.** At its end:
+
+```text
+if c_b[k] = 0:  add boundary    only when p_b[k] >= θ_on
+if c_b[k] = 1:  remove boundary only when p_b[k] <= θ_off
+otherwise:      hold
+```
+
+Start `θ_on = 0.7`, `θ_off = 0.3`, and **calibrate them on held-out downstream
+quality, not boundary F1** — the boundaries exist to serve the denoiser, not to
+match a router.
+
+**REQUIRED DIAGNOSTIC — log the fraction of edges inside the hold band before
+reading any ladder result.** `[0.3, 0.7]` is a wide band. If the router's
+calibration puts most edges inside it, no boundary ever changes and **the ladder
+silently never leaves rung 1**. That failure reads as "re-segmentation doesn't
+help" when the truth is "re-segmentation never fired", and the two have opposite
+consequences for the design. This is a gate on interpreting rungs 3-5, not a
+suggestion.
+
+**Ladder constraints apply atomically:**
+
+- **Shift-only** — pair one removal with one addition within radius `δ`; block
+  count is unchanged by construction.
+- **Local split/merge** — at most one split or merge inside each selected carrier
+  region, a minimum block width enforced, and the region's outer anchors frozen.
+- **Unrestricted** — locality dropped, but hysteresis, minimum width and
+  non-conflicting edits retained.
+
+When several candidates compete, take the non-conflicting set with the largest
+summed log-odds improvement minus movement/split/merge penalties. **Only edges
+inside the uncertainty-selected region plus a small halo are eligible**;
+everything else holds.
+
+If churn stays high, require the same proposal on two consecutive outer iterations
+before committing. **Add that persistence rule only if the churn measurement
+fires** — it is a fix for a diagnosed problem, not a default.
+
+Training rollouts must use exactly the same commit function, per the paragraph
+above.
+
 #### Phase E — unfreeze the encoder
 
 Lower learning rate, **EMA copy as the diffusion target**. EMA matters here and only here: while the encoder is frozen the target is already stationary and EMA buys nothing; once it moves, the denoiser needs a slowly-moving target.
@@ -624,7 +804,7 @@ Raise `γ_pack` only if frozen packed routing leaves a measured quality gap, and
 So the conditions for raising `γ_mask` are all of:
 
 - supervised boundary metric has cleared its gate
-- boundary mass matches a target calibrated from clean data
+- boundary mass matches the per-example target `r*_n` of §4.1 (not a global calibrated scalar)
 - ratio loss active
 - diffuse-boundary and edge-concentration diagnostics acceptable
 
@@ -736,6 +916,36 @@ The rule has already earned its place — live-dimension shrinkage, the clusteri
 ### 4.12 Scope
 
 Router₁ stays fixed throughout the latent refinement loop. Bytes aren't regenerated until the final decode, so changing byte-level segmentation mid-loop would need a partial decode/re-encode cycle. Router₂ is where the mechanism gets established.
+
+### 4.13 What is still open after the 8 Aug 2026 decisions
+
+Source: `docs/decisions-2026-08-08.md`. Eleven items were closed or given
+defaults; what follows is what remains, and the distinction between the two
+categories matters.
+
+**PARKED, each with a stated precondition:**
+
+| item | parked until |
+|---|---|
+| 12 — soft existence | the loop exists and is measured; the current channel is hard-gated by straight-through |
+| 13 — learned halting | rung-1 stopping has been tried and shown insufficient; §3.3's criterion is the cheaper thing to exhaust first |
+| 14 — `γ_pack` / packed-routing gradient estimator | a measured quality gap under FROZEN packed routing. §4.3's staged answer builds the estimator only if freezing leaves one |
+
+None of the three is blocked on a decision. Each is blocked on a measurement that
+has not been taken, and taking it is cheaper than building the thing.
+
+**DEFAULTS, NOT ANSWERS — both need data:**
+
+- **item 3, depth conditioning** — ship without a cycle-index embedding, then
+  ablate at `L = 4, Q = 3` and `L = 3, Q = 4` over multiple seeds (§5.6a).
+- **item 7, activity monotonicity** — ship monotone, with non-monotone as the
+  ablation if monotone underperforms (§4.1).
+
+Calling either of these settled would be the same error this project has made
+three times with pooled cuts: a default chosen for good reasons is still a default.
+The remaining nine items are decisions with rationale recorded in the section they
+govern, and reopening one should mean disputing that rationale rather than
+rediscovering the question.
 
 ---
 
@@ -863,7 +1073,21 @@ refine:  y_r = reverse(SSM_reverse(reverse(u)))
          y   = y_f + y_r
 ```
 
-State whether the two scans share parameters. The activity gate is reapplied to the recurrence input in **both** directions. This also makes the cost asymmetry explicit: refinement's carrier updater is two linear scans, drafting is one.
+**Parameter sharing between the two scans — decided.** Start with a **shared SSM
+core**, and **separate directional norms and learned output gates**. See
+`docs/decisions-2026-08-08.md` item 8. That keeps the direction-specific capacity
+where it is cheap (norm and gate) rather than duplicating the recurrence.
+
+**Untie the reverse scan only if refinement quality shows a gap — and
+PARAMETER-MATCH the comparison when you do.** An untied reverse scan adds
+parameters as well as direction-specific capacity, so an unmatched comparison
+confounds the two and would credit "direction" for what is really "more weights".
+Either parameter-match the shared variant or report the extra parameter count
+alongside the result; reporting neither makes the ablation uninterpretable.
+
+The activity gate is reapplied to the recurrence input in **both** directions.
+This also makes the cost asymmetry explicit: refinement's carrier updater is two
+linear scans, drafting is one.
 
 Runs over all `C` positions, so SSM by the §4.3 constraint. Used for both the bootstrap proposal (§4.5) and the post-unpool update. Position information is a learned or sinusoidal embedding, **not RoPE** — Mamba has no Q/K vectors to rotate.
 
@@ -894,7 +1118,11 @@ z_mk = Σ_{i ∈ I_m} α_ik · h_i
 
 `r_i` is the chunk's relative position within its block. Because `K` is fixed this is `O(CK)`, not `O(C²)` — the softmax is over each block's own members, not the whole carrier.
 
-**If that machinery isn't wanted, set `K = 1`** and a plain scatter-reduce is exactly correct. Worth trying first: `K = 1` is the honest baseline and `K > 1` has to earn itself.
+**DECIDED: `K = 1`.** See `docs/decisions-2026-08-08.md` item 9. A plain
+scatter-reduce is then exactly correct and the resampler machinery above is not
+built at all. `K = 1` is the honest baseline and `K > 1` has to earn itself
+against it — which also removes `resample_k` from §5.6's edge pooling, where it
+degenerates to a mean, and collapses §5.7's `β_ik` broadcast to a gather.
 
 Hard forward, soft backward (§4.3). No attention over the full carrier at this stage.
 
@@ -941,7 +1169,25 @@ Three things worth stating:
 - **The mask is over flattened `(m,k)` positions, not carrier `S_ij`.** Draft: `M_{(m,k),(n,l)} = 1[n ≤ m]` — unrestricted among the `K` summaries within a block, plus all earlier blocks. Refinement: global, with the §4.4 floor. `S_ij` is for direct-carrier mode and soft pooling only.
 - **RoPE here, and only here** — this is the sole attention stage. Use the block's carrier *span* or centre as its coordinate, not its packed ordinal, since blocks have variable width.
 - **`cond_{m,k}` is derived from carrier-coordinate noise** after the incoming partition is packed — not sampled per block. See §5.7.
-- **Boundary-edge noise needs its own pooling rule.** The chunk resampler weights cover `[C]` positions; `ν_b` is `[C−1]` edges and is not directly covered by them. Define an edge-to-summary rule (which edges belong to block `m`, and how they pool) rather than assuming the content weights apply. Open item.
+- **Boundary-edge noise pools BY STRUCTURAL ROLE, not by the content weights. Decided — see `docs/decisions-2026-08-08.md` §2.** The chunk resampler weights cover `[C]` positions; `ν_b` is `[C−1]` edges and is not covered by them, so converting `ν_b` to chunk values and reusing the content weights would be a silent type error. Each packed block has three distinct edge sets:
+
+  - the interval separating it from the **previous** emitting block;
+  - all **internal** carrier edges, including edges spanning inactive holes;
+  - the interval separating it from the **next** emitting block.
+
+  Embed first, then pool — the Fourier embeddings, not the raw scalar noise:
+
+  ```text
+  e_left[m]     = mean φ_b(ν_b[e]),      e in the left interface interval
+  e_internal[m] = resample_k φ_b(ν_b[e]), e internal to block m
+  e_right[m]    = mean φ_b(ν_b[e]),      e in the right interface interval
+
+  cond_b[m,k] = W_left e_left[m] + W_internal e_internal[m,k] + W_right e_right[m]
+  ```
+
+  **An interface interval belongs to BOTH adjacent blocks** — once as `right`, once as `left`. That double-counting is deliberate: uncertainty about where two blocks separate is information about each of them.
+
+  At `K = 1`, `resample_k` degenerates to a mean. Missing outer interfaces (the first and last blocks) take learned **BOS-edge / EOS-edge** embeddings rather than zeros, so "no interface" and "a certain interface" are not the same vector.
 
 ### 5.6a Weight sharing — `L` distinct blocks, `Q = 12/L` cycles
 
@@ -976,11 +1222,26 @@ Sharing is a *reallocation*, not a free improvement. Pretraining at 250B tokens 
 
 The trade points the right way for the synthetic and CoT stages, where fact recall is nearly irrelevant. **It inverts at the general-text endpoint.** Mitigation if needed: a regulariser encouraging layers to stay *close* rather than fully tied, making the trade continuous.
 
-#### Depth conditioning — unresolved, test it
+#### Depth conditioning — DEFAULT: no cycle-index embedding
 
-I previously listed a layer-index embedding as required. That is **not settled**. There is a reasonable argument against: repeating the same function on a changing state is what makes a model recurrent, and conditioning on the recurrence index may undercut the path independence that recurrent-depth models exhibit.
+**Decided as a default, not an answer — see `docs/decisions-2026-08-08.md` item 3.**
+Ship without a cycle-index embedding; ablate it rather than assume it.
 
-At fixed `Q` it is cheap to test both ways — one embedding into a conditioning sum that already exists. Run it as an ablation rather than assuming either answer.
+The framing that settles which quantity is even in dispute: **a physical layer's
+identity is already encoded in its weights. The disputed signal is the
+RECURRENCE-CYCLE index** — which pass through the shared stack this is. Those are
+different things, and an earlier draft of this section ran them together by
+calling the whole question "layer-index embedding".
+
+Once separated, the argument against is clear: repeating the same function on a
+changing state is what makes a model recurrent, and conditioning on the cycle
+index may undercut the path independence recurrent-depth models exhibit.
+
+**Ablate at `L = 4, Q = 3` and `L = 3, Q = 4`, over multiple seeds** — two
+factorisations of the same twelve applications, so a result that holds in one and
+not the other is about the factorisation rather than the embedding. Between-seed
+error bars, per the standing rule; a single-seed shape claim here would be the
+fourth instance.
 
 #### Deferred: variable `Q`
 
@@ -989,7 +1250,7 @@ If fixed-compute sharing succeeds, variable depth becomes a separate gated exper
 **Two claims I overstated and am withdrawing:**
 
 - *"Monotonic depth-wise loss is possible only with weight sharing."* The result behind that is a theorem about restricted in-context linear regression, not a guarantee about denoising quality here. Separately, one 2026 study on compositional reasoning found final-only supervision preferable to intermediate losses, which it associated with heuristic shortcuts — three domains, not a general result about depth-recurrent models. **Treat intermediate supervision as an ablation, not a default**, and don't build the early-exit story on it either way.
-- *"Depth conditioning is required."* See above.
+- *"Depth conditioning is required."* See above — and the sharper version is that a physical layer's identity is already in its weights, so the only thing an embedding could add is the recurrence-cycle index.
 
 #### Practical
 

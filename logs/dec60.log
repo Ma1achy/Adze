@@ -28,3 +28,6 @@ regime A + B mix (50%/50%) — 60000 steps, batch 256, lr 0.001
   step      1  loss 1.996092  block all  regime B steps 1
   step   6000  loss 0.934209  block all  regime B steps 3033
   step  12000  loss 0.631491  block all  regime B steps 6011
+  step  18000  loss 0.621248  block all  regime B steps 8955
+  step  24000  loss 0.898209  block all  regime B steps 11983
+  step  30000  loss 0.599335  block all  regime B steps 14974
