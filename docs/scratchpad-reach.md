@@ -116,6 +116,32 @@ Six seeds, between-seed error bars. Shape claims wait for seeds.
 
 Adjacent precedent: repeated partial regeneration is effective elsewhere in diffusion (arXiv 2605.19317), but its expansion of *causal reach* has not been isolated this way.
 
+**PRIOR ART FOR THE FIX — read before rebuilding this. Added 8 Aug 2026.**
+
+§1a measured that the loop **shreds** context rather than relaying it: a pass
+regenerates a neighbour and replaces it with something usually wrong, `preserved`
+collapses 0.10% -> 0.05% -> 0.00% over three passes, and the effect falls from
++2.51% to +0.93%. Nothing is carried forward because **each pass restarts from the
+committed discrete output.**
+
+Two published results address exactly that, from the other side:
+
+- **Relay** — arXiv 2605.22967. Carries last-layer hidden states forward through a
+  differentiable per-token channel, trained with truncated BPTT, and names the
+  problem the **"hard reset"** between denoising rounds. **Relay's carry-forward
+  IS the content/carrier separation this document proposes for the relay
+  experiment** — already implemented and trained.
+- **RCD** — arXiv 2601.22954. Converts discarded token representations into
+  contextual residuals injected into the next denoising step. The same instinct at
+  a finer grain: keep what commitment would throw away.
+
+**So the next iteration of this experiment cites Relay and builds on it rather
+than reinventing it.** What would remain novel here is not the carry-forward
+mechanism but the measurement — whether carrying state forward extends the
+distance over which downstream evidence supports repair, which is the question
+§1a could not answer because the loop destroyed the context it was meant to
+propagate through.
+
 ---
 
 ## 1a. RESULT — the loop is a shredder, not a relay

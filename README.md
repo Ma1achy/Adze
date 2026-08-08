@@ -280,15 +280,24 @@ has done that.
 
 ## A methodological finding, transferable beyond this work
 
-**In tree-structured reasoning tasks, distance-to-consumer is confounded with
-dependency type by construction.** A step whose operands both come from earlier
-steps sits higher in the tree, so its own consumer is further away. The two
-variables are not independent and no amount of extra data separates them.
+**Where consumer distance is induced by a fixed evaluation order over a
+hierarchical structure, distance and dependency type can be strongly coupled.**
+The coupling is in the *linearisation*, not in the tree — a tree fixes ancestry,
+and distance only appears once it is laid out in an order. Post-order over an
+expression tree is a case where the coupling is tight: a step whose operands both
+come from earlier steps roots a larger subtree, so its parent cannot be emitted
+until that subtree has been, and its consumer is further away.
 
 Anyone reporting a distance profile on such data without decomposing by
-provenance will find a spurious window. This repository found one, at z = 6.06
-and z = 4.21 over six seeds, made it the headline, and believed it for several
-days. Six seeds fixed the sampling noise and left the confound untouched.
+provenance can find a spurious window. This repository found one, at z = 6.06 and
+z = 4.21 over six seeds, made it the headline, and believed it for several days.
+Six seeds fixed the sampling noise and left the confound untouched.
+
+The concrete measure of how badly the two are welded: **far + both-leaves is 43.1%
+of a decorrelated generator's records and ~69 per seed here.** A both-leaves node
+has a minimal subtree, so under post-order its parent follows almost immediately.
+That cell is nearly absent by construction, not by sampling, so more data from
+this generator would not have recovered it.
 
 See `docs/positioning.md` §3 for the prior-art survey and §4 for the claim
 wording, including the claims deliberately not made.

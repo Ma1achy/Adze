@@ -26,3 +26,4 @@ GATE — overfit one batch (8 examples, loss to near zero)
 
 regime A + B mix (50%/50%) — 60000 steps, batch 256, lr 0.001
   step      1  loss 1.996092  block all  regime B steps 1
+  step   6000  loss 0.934209  block all  regime B steps 3033

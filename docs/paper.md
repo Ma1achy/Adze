@@ -140,10 +140,9 @@ provenance.
 **And d = 4 is the maximum this generator produces.** "Every distance" means every distance
 the tree generator produces, and its furthest cell holds ~117 traces per seed. The
 statement is true and narrower than it sounds: nothing here rules out a reach
-limit at d = 6, or d = 10. A generator that decorrelates distance from provenance
-now exists (`src/adze/data/decorrelated.py`) and extends the clean range to
-d = 1..5; until a model is trained on it, "no measured reach limit" means *not
-measured*, not *shown absent*.
+limit at d = 6, or d = 10. **"No measured reach limit" means *not measured*, not
+*shown absent*.** A decorrelating generator exists and extends the clean range to
+d = 1..5, but has produced no interpretable measurement yet — §12.
 
 This is a consolidation rather than a loss. It collapses what looked like two
 findings — a distance window and a source split — into one: global wins where the
@@ -154,10 +153,16 @@ provenance. One mechanism, two views.
 **Caveat on the decomposition's strength.** The class gaps and the distance
 profile come from the same records, so the inputs are not independent, and the
 thin cells (both-leaves at d = 4 is ~23 traces per seed) are not printed as rates.
+Worse, the class effects are estimated from distance-imbalanced cells — at d = 1,
+both-from-earlier has **zero support** — so no estimator can separate the two
+variables there; see §12.
+
 What the decomposition establishes is that distance adds nothing once provenance
-is known; it does not prove a horizon could never be found with a generator that
-decorrelates the two. That generator does not exist yet and building it is the
-obvious next measurement.
+is known **on this generator**. It does not establish that no horizon exists. That
+requires a generator whose consumer assignment does not inherit the evaluation
+order, and the status of that work is stated once, in §12: the generator is built
+and verified, a model has been trained on it, and its repair effect is at chance,
+so it has produced no interpretable distance measurement yet.
 
 ## 6. Disjoint sources
 
@@ -214,6 +219,31 @@ rather than a finding: task-dependence would track how much of a task's reasonin
 each step's own prefix already determines, not how far its dependencies reach.
 Testing it needs their data cut by dependency type, which has not been done.
 
+**Two results carry state across denoising steps, which is the mechanism this
+work's refinement loop lacks.** Both are prior art for the fix rather than for the
+measurement.
+
+**RCD** (arXiv 2601.22954) converts discarded token representations into
+contextual residuals and injects them into the next denoising step, so information
+that would otherwise be thrown away when a token is committed survives into the
+following round.
+
+**Relay** (arXiv 2605.22967) carries last-layer hidden states forward through a
+differentiable per-token channel, trained with truncated backpropagation through
+time, and frames the problem as the **"hard reset"** between denoising rounds.
+
+That framing is the same problem this work measured from the other side. §1a of
+`docs/scratchpad-reach.md` found the refinement loop **shreds** context rather
+than relaying it: a pass regenerates a neighbour and replaces it with something
+usually wrong, so `preserved` collapses from 0.10% to 0.00% over three passes and
+the effect falls from +2.51% to +0.93%. Nothing is carried forward because each
+pass restarts from the committed discrete output.
+
+Relay's fix — carry the continuous state forward rather than recompute it from the
+discrete output — is the content/carrier separation this repository had proposed
+for its own relay experiment, already implemented and trained. Any future version
+of that experiment should build on it rather than reinvent it.
+
 ## 8. Negative results
 
 Absolute exploitation is weak, and five attempts to improve it by changing the
@@ -259,14 +289,28 @@ exposure-bias story, and a prefix information estimate that was a kNN artifact.
 
 ## 10. A methodological finding
 
-**In tree-structured reasoning tasks, distance-to-consumer is confounded with
-dependency type by construction.** A step whose operands both come from earlier
-steps sits higher in the expression tree; its subtree is larger; and in any
-evaluation order its own consumer is therefore further away. Distance and
-provenance are not independent, and collecting more data does not separate them.
+**The confound is in the LINEARISATION, not in tree structure itself.** An earlier
+draft of this section said "in tree-structured reasoning tasks, distance-to-
+consumer is confounded with dependency type by construction". That is an
+overclaim, and the correction matters because it says what a fix must change.
+
+A tree does not determine linear consumer distance. It determines *ancestry*.
+Distance only appears once the tree is laid out in an evaluation order, and it is
+that layout which couples the two variables. Under **post-order** emission the
+coupling is tight and predictable: a step whose operands both come from earlier
+steps roots a larger subtree, and its parent cannot be emitted until that whole
+subtree has been, so its consumer is further away. A step with two literal
+operands roots a minimal subtree and its parent often follows immediately.
+
+The same tree under a different linearisation gives a different distance profile
+from identical dependency structure. So the claim is:
+
+> Where consumer distance is induced by a fixed evaluation order over a
+> hierarchical structure, distance and dependency type can be strongly coupled,
+> and post-order over an expression tree is a case where they are.
 
 The consequence is specific and checkable: **a distance profile computed on such
-data will show a spurious window**, because the near cells are dominated by the
+data can show a spurious window**, because the near cells are dominated by the
 dependency type where downstream evidence helps most and the far cells by the type
 where it helps least. This work found that window at z = 6.06 and z = 4.21 over
 six seeds and led with it.
@@ -275,29 +319,38 @@ The correction is not more seeds. Six seeds is what made it look unassailable.
 **Replication fixes sampling noise; only decomposition fixes a confound.**
 
 We suggest that any distance or reach profile reported on structured reasoning
-data be accompanied by the same decomposition, and that a generator which
-decorrelates the two be used where a genuine reach claim is intended.
+data be accompanied by the same decomposition, and — where a genuine reach claim
+is intended — a generator whose consumer assignment does not inherit the layout.
 
 ## 11. Method note: why the interior band excludes the ends
 
 The decorrelating generator's cross-tab is reported over an **interior band** —
 steps at index >= 2 whose consumer draw has the full bounded range available. A
-reader is entitled to ask why the ends are dropped, and the answer is that the
-confound there is structural rather than statistical.
+reader is entitled to ask why the ends are dropped.
 
-Position bounds both variables, from opposite ends. A step at index 0 or 1 cannot
-have two operands from earlier steps, so its provenance class is constrained by
-where it sits. A step within `DISTANCE_MAX` of the end cannot have a distant
-consumer, so its distance is constrained by where it sits. Near either end the two
-variables are therefore both functions of position, and **no construction avoids
-it** — it is a property of laying a dependency structure on a linear order, not of
-this builder.
+Position bounds both variables near the ends, from opposite directions. A step at
+index 0 or 1 cannot have two operands from earlier steps, so its provenance class
+is constrained by where it sits. A step within `DISTANCE_MAX` of the end cannot
+have a distant consumer, so its distance is constrained by where it sits. In those
+regions the two variables are both partly functions of position.
 
-Excluding those steps is honest; including them and adjusting would be
-fabrication. The band is defined before the data is generated, by the generator's
-own parameters rather than by anything measured, so it cannot be tuned to a
-result. Steps outside it are still generated, still trained on, and still valid —
-they are excluded from the *distance analysis* only, and their count is reported.
+**An earlier draft said "no construction avoids it". That was wrong, and it
+contradicted the design it was defending.** The interior band IS a construction
+that avoids boundary contamination — that is precisely what it does. Other
+constructions exist too: a cyclic or wrap-around dependency structure would remove
+the boundary entirely, and padding the chain beyond the analysed region would push
+the bounded region outside it. What is true is narrower:
+
+> Given a linear chain with hard ends and a bounded consumer draw, positions
+> within `DISTANCE_MAX` of either end have a restricted range, so a decorrelated
+> estimate requires either excluding them or a different chain topology. This
+> generator excludes them.
+
+Excluding is honest; including them and adjusting would be fabrication. The band
+is defined before the data is generated, by the generator's own parameters rather
+than by anything measured, so it cannot be tuned to a result. Steps outside it are
+still generated, still trained on, and still valid — they are excluded from the
+*distance analysis* only, and their count is reported.
 
 The same applies to distances past `DISTANCE_MAX`, which occur only where capacity
 forced an overshoot. They are printed, flagged, and excluded from the swing.
@@ -318,9 +371,35 @@ forced an overshoot. They are printed, flagged, and excluded from the swing.
   out.
 - **Distance and provenance are correlated in this generator**, and that is the
   main limitation. Near cells are 76-92% both-leaves and far cells ~30%
-  both-from-earlier, so no distance range is available at fixed provenance. A
-  generator that decorrelates them is what would settle whether any horizon
-  exists at all.
+  both-from-earlier, so no distance range is available at fixed provenance.
+
+- **The class effects are themselves estimated from distance-imbalanced cells,
+  and at d = 1 one class has ZERO SUPPORT.** both-from-earlier is 0.0% of the
+  d = 1 cell and ~30% of d = 3 and d = 4, so the provenance effect is estimated
+  almost entirely from far records and then used to explain near ones. A
+  conditional regression of the effect on distance and provenance jointly cannot
+  separate them at d = 1 — not because the cell is noisy, but because **the design
+  has no overlap there.** No estimator recovers a contrast the data does not
+  contain. This is why a redesigned generator is load-bearing rather than tidy.
+
+- **The old generator is STRUCTURALLY INCAPABLE of the decorrelated regime's
+  dominant cell, not merely underpowered for it.** A both-leaves node has both
+  children as leaves, so its subtree is minimal, and under post-order its parent
+  follows immediately unless a large sibling subtree intervenes — right-children
+  land at d = 1 by construction. So *far + both-leaves* barely exists: ~69 records
+  per seed. In the decorrelated generator that same cell is **43.1%** of records,
+  and it is why a within-class reweighting from the old data to the new covers
+  only **52%** of them. More traces from the old generator would not help; the
+  cell is nearly absent by construction rather than by sampling.
+
+- **The decorrelated regime has no interpretable measurement yet.** A model has
+  been trained on it and its repair effect is +0.43% against a 0.64% permutation
+  chance, with causal at chance — so the per-distance profile it yields is noise
+  and no reach conclusion is drawn from it. The generator is verified (swing
+  0.05pp) and the pipeline passes its gates; what is missing is a model that
+  performs the task well enough on that data to be measured. Every distance claim
+  in this paper therefore still rests on the confounded generator, with the
+  decomposition above as the correction.
 
 ## Claim wording
 

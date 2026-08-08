@@ -14,9 +14,14 @@
 #                                   mean decorrelating and staying tractable are in
 #                                   tension
 #
-# Verified swing 0.02pp over usable distances 1..3. The band is a single index (2),
-# so every analysed step sits at the same position — acceptable here because this
-# is a control for the length variable, not the distance measurement.
+# Verified swing 0.02pp over usable distances 1..3.
+#
+# THE SINGLE-INDEX BAND IS A SCOPE LIMIT, NOT A DEFECT. Every analysed step sits
+# at position 2, so position is held PERFECTLY CONSTANT while distance varies —
+# which is a cleaner design for isolating a distance effect than varying both and
+# hoping they separate. What it cannot do is test position-dependence. State the
+# result as "distance measured at fixed position; position-dependence untested"
+# rather than as a weakness of the measurement.
 
 name: dec7
 

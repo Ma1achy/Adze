@@ -235,6 +235,27 @@ tightened the error bar around a biased estimate and made it more convincing. Wh
 a stratification looks strong, the question is not "how many seeds" but "what else
 varies across these cells".
 
+**STRATIFY BEFORE READING ANY POOLED CUT — INCLUDING CUTS THAT ARRIVE AS
+SUGGESTIONS.** The pooled-versus-stratified error has now happened three times:
+
+1. **the smooth distance decay** — withdrawn as single-seed
+2. **the distance cliff** — six seeds, z = 6.06 and z = 4.21, the README headline;
+   it was provenance composition
+3. **a proposed d >= 3 cut** that appeared to show the effect dying past d = 2 —
+   pooled it reads +0.29% (z = 0.88) against +2.89% (z = 9.87) at d = 1-2, which
+   looks decisive. Stratified, one-leaf at d >= 3 gives **+1.87% +/- 0.46,
+   z = 4.04.** The far cells are both-from-earlier-rich and that class is negative,
+   so the pooled null was composition for the third time.
+
+Every instance is the same shape: **a pooled statement about cells with differing
+composition read as a statement about the variable being plotted.**
+
+The last two arrived as instructions from outside and were applied before
+stratifying. Being handed a cut is not evidence the cut is clean. Run the
+composition table first, every time — it is free, it is already written
+(`scripts/m9_decorrelation.py`, `adze.eval.strata`), and it has now overturned
+three conclusions.
+
 **SHAPE CLAIMS WAIT FOR SEEDS, even when the magnitude does not.** A monotone
 profile, a sign change, a decay, a crossing — these are the claims most worth
 having and the ones a single run is least able to support, because a shape is
