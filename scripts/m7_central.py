@@ -49,7 +49,7 @@ CONSTRUCTORS = {
 
 
 def select(pairs, blocks: int, want: int, full_length_only: bool,
-           require_provenance: str | None) -> list:
+           require_provenance: str | None, interior_band: int | None = None) -> list:
     """Rejection-sample the eval set.
 
     Thin strata are fixed by targeting them, not by scaling every run. Eval-trace
@@ -71,6 +71,14 @@ def select(pairs, blocks: int, want: int, full_length_only: bool,
         if require_provenance is not None:
             step = pair.clean.steps[pair.block_index]
             if operand_provenance(step) != require_provenance:
+                continue
+        if interior_band is not None:
+            # The decorrelating generator's interior band: only there are distance
+            # and provenance independent. Rejection-sampling into it costs nothing
+            # — eval-trace generation is CPU-only — and every sampled trace then
+            # contributes to the distance analysis instead of ~40% of them.
+            b = pair.block_index
+            if b < 2 or b + interior_band > n - 1:
                 continue
         kept.append(pair)
         if len(kept) >= want:
@@ -99,6 +107,10 @@ def main() -> None:
                    help="keep only n_steps == B — pad-free, no softmax confound")
     p.add_argument("--require-provenance", choices=["both-leaves", "one-leaf",
                                                     "both-from-earlier"])
+    p.add_argument("--interior-band", action="store_true",
+                   help="keep only pairs whose corrupted block lies in the "
+                        "decorrelated generator's interior band, where distance "
+                        "and provenance are independent")
     p.add_argument("--out", type=Path, help="per-trace records, for m7_strata.py")
     args = p.parse_args()
 
@@ -125,7 +137,8 @@ def main() -> None:
         candidates = [build(t, rng_seed=i, **kw) for i, t in enumerate(traces)
                       if len(t.steps) >= 2]
         pairs = select(candidates, blocks, args.traces,
-                       args.full_length_only, args.require_provenance)
+                       args.full_length_only, args.require_provenance,
+                       config.data.distance_max if args.interior_band else None)
         if len(pairs) >= args.traces or pool >= 400_000:
             break
         pool *= 4
@@ -158,7 +171,8 @@ def main() -> None:
     corrupt_steps = [_render(p.corrupted) for p in pairs]
     assert len(items) == len(pairs)
 
-    selector = ("full-length-only " if args.full_length_only else "") + (
+    selector = ("interior-band " if args.interior_band else "") + (
+        "full-length-only " if args.full_length_only else "") + (
         "spread-index " if args.spread_index else "") + (
         args.require_provenance or "")
     print(f"denoiser      {args.denoiser}  {arch['n_layers']}L x {arch['d_model']}w")

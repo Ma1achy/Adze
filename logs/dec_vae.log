@@ -8,3 +8,5 @@ held-out      40000 steps, 1030 unseen (2.6%)
 optimiser     60000 steps, batch 256, lr 0.0003, kl_beta 0.001
 
   step      1  loss  4.0065  recon  3.9904  kl   16.074  held-out exact   0.0%
+  step   6000  loss  0.1012  recon  0.0314  kl   69.854  held-out exact  90.7%
+  step  12000  loss  0.0777  recon  0.0146  kl   63.063  held-out exact  96.0%
