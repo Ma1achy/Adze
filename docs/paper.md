@@ -447,15 +447,29 @@ the swing.
   only **52%** of them. More traces from the old generator would not help; the
   cell is nearly absent by construction rather than by sampling.
 
-- **The decorrelated generator now exists, but no model has yet been trained and
-  evaluated on it to an interpretable standard.** The generator is verified (swing
-  0.05pp, usable range d = 1..5) and the pipeline passes its gates, but the one
-  model trained on it repairs at +0.43% against a 0.64% permutation chance, with
-  causal at chance — so its per-distance profile is noise and no reach conclusion
-  is drawn from it. **Every distance claim in this paper therefore still rests on
-  the confounded generator**, with the decomposition in §5 as the correction. This
-  is the single statement of that work's status; earlier drafts contradicted
-  themselves across three passages.
+- **The decorrelated generator exists and is verified, and no model trained on it
+  repairs well enough to measure.** Three now exist: +0.43% at 20k steps, +0.73%
+  at 60k, and −0.20% on a length-matched B = 7 variant, against a permutation
+  chance of ~0.63% and an old-regime effect of +2.51% ± 0.62. Causal sits at
+  chance in all three. **Every distance claim in this paper therefore still rests
+  on the confounded generator**, with the decomposition in §5 as the correction.
+
+  Four alternatives were checked and eliminated: undertraining (3× budget bought
+  +0.30pp), trace length (old-generator 7-step traces are the *strongest* cell at
+  +3.50% ± 0.89, so length runs the opposite way), a degenerate checkpoint (the
+  decorrelated models *draft* better than the old one — 29.8% and 31.3% matched
+  truth against 23.9%), and eval-side erasure size (flat at chance across |S| 1–7).
+
+  **The surviving explanation is the dependency structure itself, and it is
+  coherent with §5.** The old generator's pin was mostly adjacent — d = 1 was 60.2%
+  of records, mean distance 1.60 — and §5 shows the old effect is carried by
+  d = 1–2. Post-order emission placed consumers next to their producers, which is
+  simultaneously what welded distance to provenance *and* what made the pin easy to
+  exploit. **The confound and the effect share a cause**, so removing the weld
+  removes most of the signal.
+
+  The consequence for the paper's scope is direct: this work measures repair **when
+  the pin is adjacent**, and cannot yet extend that to when it is far.
 
 ## Claim wording
 
