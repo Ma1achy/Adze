@@ -1,0 +1,248 @@
+########## DEC7 VAE START 23:43
+config        configs/dec7.yaml  (dec7)
+device        mps
+vocab         19 symbols, max_len 24
+params        1.74M
+train steps   280000 from 40000 traces
+held-out      28000 steps, 1293 unseen (4.6%)
+optimiser     60000 steps, batch 256, lr 0.0003, kl_beta 0.001
+
+  step      1  loss  4.0041  recon  3.9880  kl   16.059  held-out exact   0.0%
+  step   6000  loss  0.1097  recon  0.0384  kl   71.254  held-out exact  87.5%
+  step  12000  loss  0.0855  recon  0.0195  kl   65.994  held-out exact  94.4%
+  step  18000  loss  0.0751  recon  0.0153  kl   59.795  held-out exact  97.3%
+  step  24000  loss  0.0655  recon  0.0100  kl   55.531  held-out exact  98.4%
+  step  30000  loss  0.0665  recon  0.0108  kl   55.722  held-out exact  98.7%
+  step  36000  loss  0.0576  recon  0.0064  kl   51.176  held-out exact  99.4%
+  step  42000  loss  0.0569  recon  0.0058  kl   51.058  held-out exact  99.6%
+  step  48000  loss  0.0510  recon  0.0028  kl   48.208  held-out exact  99.7%
+  step  54000  loss  0.0523  recon  0.0053  kl   46.951  held-out exact  99.8%
+  step  60000  loss  0.0534  recon  0.0056  kl   47.843  held-out exact  99.8%
+
+trained in 3530.6s
+
+==========================================================================
+GATE 1 — held-out reconstruction (need > 95% exact match)
+==========================================================================
+  token accuracy          99.99%
+  exact match             99.75%   <- the gate
+  exact match, unseen     95.67%   (1293 steps not present in training)
+  PASS
+
+==========================================================================
+GATE 2 — latent use (need a LARGE gap)
+==========================================================================
+  clean exact match       99.75%
+  shuffled latents         0.01%
+  gap                     99.74%   <- the gate
+  random latents           0.00%   (cross-check)
+
+  PASS — shuffling the latent destroys reconstruction.
+
+checkpoint    checkpoints/vae_dec7_d16.pt
+latent cache  data/cache/latents_dec7_d16.pt  (40000, 28, 16)  [n, N=B*K, D]
+scale         0.7978  (scaled latent std 1.0000, per-position norm 3.958 vs sqrt(D)=4.000)
+########## DEC7 DEN START 00:44
+config        configs/dec7.yaml  (dec7)
+device        mps
+latents       (40000, 28, 16)  [n, N=B*K, D]  scale 0.7978
+              real positions 100.0%, std 1.0000, RMS norm 4.000 vs sqrt(D)=4.000
+params        1.46M
+shapes        B=7 K=4 D=16 N=28
+
+==========================================================================
+GATE — overfit one batch (8 examples, loss to near zero)
+==========================================================================
+  initial loss  1.960916
+  final loss    0.037251
+  per block (final / initial):
+    b=0  10.20%   <- no prefix; unconditional, floors above the rest
+    b=1   0.55%
+    b=2   0.43%
+    b=3   0.48%
+    b=4   0.43%
+    b=5   0.50%
+    b=6   0.45%
+  PASS — worst conditioned block 0.55% of initial (threshold 2%)
+
+regime A + B mix (50%/50%) — 20000 steps, batch 256, lr 0.001
+  step      1  loss 2.020119  block all  regime B steps 1
+  step   2000  loss 0.770374  block all  regime B steps 1000
+  step   4000  loss 0.693328  block all  regime B steps 2027
+  step   6000  loss 0.892046  block all  regime B steps 3033
+  step   8000  loss 0.645068  block all  regime B steps 4036
+  step  10000  loss 0.897531  block all  regime B steps 5033
+  step  12000  loss 0.614419  block all  regime B steps 6011
+  step  14000  loss 0.611579  block all  regime B steps 6991
+  step  16000  loss 0.608106  block all  regime B steps 7965
+  step  18000  loss 0.618413  block all  regime B steps 8955
+  step  20000  loss 0.873633  block all  regime B steps 9994
+
+trained in 1619.9s
+regime B      9994/20000 steps (50.0% realised, 50% requested)
+regime A      10006 steps
+checkpoint    checkpoints/denoiser_dec7_d16_L4_mixedP50.pt
+denoiser      checkpoints/denoiser_dec7_d16_L4_mixedP50.pt  4L x 128w
+vae           checkpoints/vae_dec7_d16.pt
+condition     --corrupt early   [TARGETED: interior-band]
+traces        3000 held-out corrupted pairs, B=7
+sampling      nfe 32, eta 1.0, erasure seed 0
+selection     ORACLE — the corrupted index is known. Upper bound.
+
+==============================================================================
+THE CENTRAL EXPERIMENT
+==============================================================================
+   condition    exact   RESULT  operands   formed   answer  preserved
+        none    25.2%    25.6%     89.0%    99.6%    99.7%      98.9%
+      causal     0.0%     0.9%      0.0%    99.7%    99.7%      98.9%
+      global     0.0%     0.7%      0.0%    99.5%    99.7%      98.9%
+
+==============================================================================
+  GAP (global - causal)   exact -0.0%   RESULT -0.2%   operands -0.0%
+==============================================================================
+  RESULT is the arm the experiment's logic points at: the corruption
+  changes a result, downstream steps consume the original value, so
+  downstream context identifies the RESULT and nothing else. Operands
+  are fixed by the question, and question conditioning (M5) is not
+  built — so a positive RESULT gap with a flat operands gap is exactly
+  the signature the claim predicts.
+  Positive -> regenerating with downstream context in view repairs
+  the corrupted block more reliably than regenerating causally. That
+  is the claim the whole repo was built to test.
+
+  Read as an UPPER BOUND: block selection is oracle here.
+
+  `none` IS NOT THE BASELINE FOR THESE ARMS. It measures the VAE
+  round-trip, not no-revision: the VAE was trained on valid arithmetic
+  only, so it projects an off-distribution corrupted step onto the
+  nearest valid one and silently repairs 19.6% of corruptions. The
+  regeneration arms erase the block and discard that free repair.
+  The reference is CHANCE — see scripts/m7_strata.py, which scores
+  every rate against a permutation null.
+
+PAIRED (McNemar) on RESULT: global-only 20, causal-only 26,
+  discordant 46, chi2(1) with continuity correction = 0.54
+  NOT significant at 0.05
+
+wrote 3000 records to runs/dec7_early.json
+
+EXAMPLES — same trace, same erasure, only the mask differs
+------------------------------------------------------------------------------
+  block 2  want '19 - 15 = 4'
+       causal  '20 - 49 = -19'
+       global  '67 - 57 = 15'
+  block 2  want '17 + 76 = 93'
+       causal  '64 - 20 = 44'
+       global  '57 - -7 = 59'
+  block 2  want '37 + 24 = 61'
+       causal  '15 - 80 = -75'
+       global  '60 - 57 = 11'
+  block 2  want '58 - 85 = -27'
+       causal  '67 - 58 = 9'
+       global  '52 - -7 = 55'
+  block 2  want '2 - -31 = 33'
+       causal  '51 - 41 = 12'
+       global  '60 - 57 = 1'
+  block 2  want '36 - 14 = 22'
+       causal  '49 - 21 = 28'
+       global  '60 - 57 = 11'
+denoiser      checkpoints/denoiser_dec7_d16_L4_mixedP50.pt  4L x 128w
+vae           checkpoints/vae_dec7_d16.pt
+condition     --corrupt final
+traces        3000 held-out corrupted pairs, B=7
+sampling      nfe 32, eta 1.0, erasure seed 0
+selection     ORACLE — the corrupted index is known. Upper bound.
+
+==============================================================================
+THE CENTRAL EXPERIMENT
+==============================================================================
+   condition    exact   RESULT  operands   formed   answer  preserved
+        none    13.8%    14.1%     87.7%    99.7%    13.8%      98.6%
+      causal     0.6%     3.0%      2.7%    98.6%     0.6%      98.6%
+      global     0.0%     0.7%      0.0%    95.4%     0.0%      98.6%
+
+==============================================================================
+  GAP (global - causal)   exact -0.6%   RESULT -2.3%   operands -2.7%
+==============================================================================
+  RESULT is the arm the experiment's logic points at: the corruption
+  changes a result, downstream steps consume the original value, so
+  downstream context identifies the RESULT and nothing else. Operands
+  are fixed by the question, and question conditioning (M5) is not
+  built — so a positive RESULT gap with a flat operands gap is exactly
+  the signature the claim predicts.
+  Positive -> regenerating with downstream context in view repairs
+  the corrupted block more reliably than regenerating causally. That
+  is the claim the whole repo was built to test.
+
+  Read as an UPPER BOUND: block selection is oracle here.
+
+  `none` IS NOT THE BASELINE FOR THESE ARMS. It measures the VAE
+  round-trip, not no-revision: the VAE was trained on valid arithmetic
+  only, so it projects an off-distribution corrupted step onto the
+  nearest valid one and silently repairs 19.6% of corruptions. The
+  regeneration arms erase the block and discard that free repair.
+  The reference is CHANCE — see scripts/m7_strata.py, which scores
+  every rate against a permutation null.
+
+PAIRED (McNemar) on RESULT: global-only 19, causal-only 89,
+  discordant 108, chi2(1) with continuity correction = 44.08
+  p < 0.05
+
+wrote 3000 records to runs/dec7_final.json
+
+EXAMPLES — same trace, same erasure, only the mask differs
+------------------------------------------------------------------------------
+  block 6  want '96 - 100 = -4'
+       causal  '94 - 100 = -66'
+       global  '67 - 50 = 17'
+  block 6  want '75 - 11 = 64'
+       causal  '11 + 10 = 21'
+       global  '67 - 57 = 13'
+  block 6  want '-19 - 50 = -69'
+       causal  '-15 - 50 = -95'
+       global  '62 - -7 = 47'
+  block 6  want '50 + 22 = 72'
+       causal  '22 + 22 = 55'
+       global  '57 - 62 = -4'
+  block 6  want '25 - 88 = -63'
+       causal  '88 - 25 = 57'
+       global  '62 - 52 = 18'
+  block 6  want '-6 * 4 = -24'
+       causal  '-7 - 56 = -71'
+       global  '50 - -7 = 51'
+vae           checkpoints/vae_dec7_d16.pt
+reference     1289 unseen held-out steps
+sampling      nfe 32, eta 1.0, seed 0, 500 traces
+
+==============================================================================
+denoiser_dec7_d16_L4_mixedP50.pt   regime B share 50%
+==============================================================================
+  distribution-matched true     29.8%   <- THE HEADLINE
+  matched ceiling               94.7%   (31% of it)
+  raw pooled true               29.7%   (pre-session-12 convention; inflated by difficulty selection)
+  raw pooled well-formed        99.4%
+  n 3500, unbinnable 8 (0.2%)
+
+   magnitude  gen share  real share       n  well-formed     true   ceiling
+         0-9       2.0%        1.2%      69        94.2%    14.5%    100.0%
+       10-29      10.5%        8.0%     367        99.7%    25.3%     97.1%
+       30-99      87.5%       89.9%    3056        99.7%    30.7%     94.6%
+     100-299       0.0%        0.9%       0            —     0.0%     83.3%
+
+  magnitude-distribution mismatch (total variation): 0.033
+  0 means the model generates the difficulty mix it will be asked for;
+  the gap between raw and matched truth is this mismatch cashed out.
+  regime A steps  10006   regime B steps 9994   total 20000
+
+================================================================================================
+DRAFT QUALITY BY MIX — the cost side
+================================================================================================
+                                    checkpoint   share   A-steps   B-steps   MATCHED      raw   formed
+              denoiser_dec7_d16_L4_mixedP50.pt     50%     10006      9994     29.8%    29.7%    99.4%
+
+  MATCHED is the headline. Raw is inflated by difficulty selection and
+  is kept only so the two eras of this project stay comparable.
+  A-steps fall as the share rises at fixed total steps. A drop in draft
+  quality is therefore NOT attributable to the mix without a control
+  that holds A-steps constant.
+########## DEC7 ALL DONE 01:15
