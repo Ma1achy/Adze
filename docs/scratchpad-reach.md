@@ -460,3 +460,111 @@ capacity forced an overshoot and are excluded too.
 **Before anything trains on this:** traces are 14-18 steps against v0's B = 7, so
 B must roughly triple and N goes from 28 to ~72 positions. That is a real cost and
 a real change to the invariants, not a config tweak.
+
+---
+
+## 11. Multi-consumer DAG — the within-record intervention (9 Aug 2026)
+
+**Built:** `src/adze/data/dag.py`, `src/adze/eval/dag_strata.py`,
+`scripts/m9_dag_diag.py`, `tests/test_m9_dag.py`. 19 tests pass.
+
+**Why this rather than another domain.** Both prior attempts (decorrelated
+arithmetic, chess) share the invariant that each value has exactly one consumer,
+making provenance and consumer distance properties of the same event. The DAG
+generator breaks this: each computed value may be consumed by k >= 1 later steps
+at different distances. A value is then its own control — same provenance, same
+corruption, evidence at two distances. The design is a within-record intervention,
+the pattern that has worked every time (redirected pin, conflict cut, shielded
+mask).
+
+**Parameters (default, B=10, N=40):**
+- n_steps=10, min_consumers=1, max_consumers=2
+- distance_min=1, distance_max=8
+- B=10, N=40 (dec10 config compatible)
+
+**Diagnostic results (4000 traces, 9 Aug 2026):**
+
+| metric | value | threshold |
+|---|---|---|
+| restricted near+far count (exactly 1 near d≤2 + 1 far d≥5) | 543 | ≥500 ✓ |
+| per class: both-leaves / one-leaf / both-from-earlier | 390 / 103 / 50 | ≥50 per class ✓ |
+| fan-out × provenance chi2/dof | 1080 | — (not criterion) |
+| consumer provenance × near/far chi2/dof | **317** | <50 is clean |
+| chi2/dof distance × provenance (nearest, reference) | 829 | — (not criterion) |
+
+**Two structural findings:**
+
+*Fan-out × provenance weld (chi2/dof = 1080):* Steps with both-from-earlier
+provenance have fewer consumers (17.3% k=0 vs ~0% for other classes). This is
+inherent to the algorithm: both-from-earlier steps consumed two in-degree slots
+from earlier steps, reducing capacity available to later draws. It reduces
+both-from-earlier coverage (only 50 restricted steps) but does not invalidate
+the measurement for those that exist.
+
+*Consumer provenance skew (chi2/dof = 317):* Far consumers (d ≥ 5) are 93%
+both-from-earlier; near consumers are 57% one-leaf / 43% both-from-earlier.
+This is a position-inherent property — steps late in the trace have more earlier
+results available, so they tend to use two computed operands. The difference
+(93% vs 43% both-from-earlier) is large and would confound a raw arm (b) vs (c)
+comparison if both-from-earlier consumers carry systematically different
+information content than one-leaf consumers.
+
+**The intervention — four arms:**
+
+```
+For each step i where consumer_map[i] = (j_near, j_far), d_near ≤ 2, d_far ≥ 5:
+  corrupt step i using M7's corrupt.py discipline — random signed delta to
+  the result, NOT operator swap (operator swaps produce a constrained set of
+  wrong answers that a model could learn without reading evidence)
+
+  four arms, same record, same corruption, same erasure of block i:
+    (a) BOTH j_near and j_far visible             — reference
+    (b) j_near erased (noise 1.0), j_far visible  — far evidence only
+    (c) j_far erased (noise 1.0), j_near visible  — near evidence only
+    (d) BOTH j_near and j_far erased              — no consumer evidence
+
+  Score: 1[regenerated block i matches clean result]
+  Primary comparison: (b) vs (c)
+  Robustness check: [(b)−(d)] vs [(c)−(d)]   — difference of differences,
+    each arm's contribution measured against a common no-evidence baseline,
+    partially controls the consumer provenance confound
+```
+
+"Erased" means noise level 1.0, exactly as `shielded_mask` in `m7_shield.py`.
+Arm (d) is required because arm (b) vs (c) is confounded by consumer provenance
+(317 chi2/dof). The difference-of-differences reduces but does not eliminate the
+confound — the 50pp difference in both-from-earlier rate remains a caveat.
+
+**Mask-count discipline:** arms (b), (c), and (d) erase 1, 1, and 2 blocks
+respectively. (b) vs (c) is matched (1 block each). [(b)−(d)] vs [(c)−(d)]
+pairs each arm with the same baseline. No |S| confound within the primary
+comparison.
+
+**Pre-registered prediction (before any model trains on DAG data, 9 Aug 2026):**
+
+*Null (likely):* arm (b) ≈ arm (c) ≈ arm (d), all near chance. The decorrelated
+training results (dec10 at 60k: +0.73%, dec7: −0.20%) show the model barely
+improves above chance even with 3× budget and richer regime-B targets. The
+expected finding is that the model cannot extract information from either near or
+far consumers, regardless of their distance. This is consistent with the reach
+result being entirely a product of the OLD generator's adjacency structure.
+
+*Alternative (if global attention works):* arm (b) > arm (c) > arm (d), with
+(b) significantly exceeding (c) — far evidence helps more than near evidence.
+This would contradict the null and require the chi2/dof = 317 consumer-provenance
+confound to be resolved before accepting it: check whether both-from-earlier
+far consumers and one-leaf near consumers carry different amounts of information
+about the producer (they may not, if the far consumer's second operand is also
+constrained).
+
+**What would make it uninformative:**
+- Model trained on DAG data fails to learn ANY reconstruction (draft quality
+  < 10% at evaluation) → the training signal is wrong
+- Arm (d) ≈ arm (b) ≈ arm (c) but all WELL ABOVE chance → consumers confuse
+  rather than inform, and the design doesn't test reach
+- Consumer provenance confound resolves the result before distance can be
+  measured → stratify (b)−(d) vs (c)−(d) by consumer provenance class
+
+**Status:** generator and diagnostic built. Training not started. No model
+has been trained on DAG data. Intervention spec is pre-registered here before
+any measurement exists.
