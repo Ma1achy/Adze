@@ -348,7 +348,7 @@ If the window is 2 because the **task's** dependencies reach 2, the right rule i
 7. **§2 two-way hierarchy**
 8. **§5 depth**
 9. **§6 relative-position bias**
-10. **§7 chess** — once reach beyond 4 is worth measuring
+10. **§7 chess** — **PROMOTED** (9 Aug 2026). Long-range consumers exist naturally; see §10 below.
 
 **Progress:** §1 done (§1a — reach does not compound; the loop shreds context). §5 done, pending seeds (§5a — depth deepens the window, does not widen it).
 
@@ -356,10 +356,52 @@ Remaining order stands as listed. §8 stays where it is rather than being promot
 
 **And none of it blocks the writeup.** The finished result — six seeds, the redirected pin, the window at z>4, the conflict cut — has been ready for several sessions. Every session since has added qualifications rather than substance.
 
+### CLOSED items — settled by the dec7/dec10 results (9 Aug 2026)
+
+| item | why closed |
+|---|---|
+| training-side `\|S\|` | dec7 erases 3.51/step, dec10 5.04. If `\|S\|` were the driver, dec10 should be worse; it is better. Not the ordering variable. |
+| §3 forced courier | Gated on dec10 showing tractability. dec10 returned null (+0.73% at 60k, −0.20% for dec7). Training a curriculum against a signal that is not there. |
+| §7 multi-consumer synthetic | Same gate, same failure. Chess supersedes it — dependencies are naturally long-range and dense, consumers at d = 10–20 exist without forcing. |
+| dec7 as a distance measurement | Registered prediction +1.3% ± 0.4; result −0.20% ± 0.23 (3.7σ below). Not a measurement — a null. The old effect is carried by adjacency (d=1 was 60.2% of old-regime records), which dec7 removes. |
+
 
 ---
 
-## 9. The decorrelating generator — NEW HEAD OF THE QUEUE
+## 10. Chess — CURRENT HEAD OF THE QUEUE (promoted 9 Aug 2026)
+
+The decorrelated synthetic generator was built and measured (three models: +0.43%,
++0.73%, −0.20%). The null dec7 result established that the confound and the old
+effect share a cause: post-order emission welded distance to provenance AND made
+the pin adjacent. Removing the weld removed the signal.
+
+Chess is the first domain where the pin is naturally long-range. Corrupt move 12
+and if move 30 captures a piece that only exists given move 12, that move pins at
+distance 18. The measurement requires real games (Lichess PGN), not random play.
+
+**Caution before reading results as the arithmetic analogy**: the provenance
+formula transfers (n = lhs_from set + rhs_from set), but the semantics do not.
+In arithmetic, `both-from-earlier` = "prefix determines the step". In chess it
+means "a previously-moved piece captures a previously-moved piece" — a mobility
+fact, not an information-theoretic one. Piece-type confounds the consumer-distance
+distribution independently: pawns move rarely (long consumer distances by
+mobility), queens move frequently (short consumer distances by mobility). Report
+piece-type composition per provenance class before interpreting any coupling.
+
+**Before training**: run `scripts/m9_chess_diag.py` on a Lichess classical/rapid
+PGN slice. If χ²/dof < 20 and the conditional consumer-distance distributions
+overlap substantially across provenance classes, proceed to VAE training.
+
+**Status:** built and tested (9 Aug 2026). `src/adze/data/chess.py`,
+`src/adze/eval/chess_strata.py`, `scripts/m9_chess_diag.py`, and
+`tests/test_m9_chess.py` in place; 17 tests pass. Smoke run on 200 random games
+gives χ²/dof = 11.2 (below the 20 threshold) with per-piece-type values of 2.8
+(PAWN) and 2.7 (QUEEN) — comparable to the decorrelated arithmetic generator's
+4.5. Diagnostic pending a Lichess classical/rapid PGN download.
+
+---
+
+## 9. The decorrelating generator — CLOSED (superseded by chess)
 
 **Built 8 Aug 2026.** `src/adze/data/decorrelated.py`, verified by
 `scripts/m9_decorrelation.py` and `tests/test_m9_decorrelated.py`. Not trained on.
