@@ -55,6 +55,7 @@ def test_is_valid_rejects_illegal_san():
     bad_moves[3] = ChessMove(
         san="Ke9", piece_type=old.piece_type, from_sq=old.from_sq,
         to_sq=old.to_sq, is_capture=old.is_capture,
+        captured_piece_type=old.captured_piece_type,
         lhs_from=old.lhs_from, rhs_from=old.rhs_from,
     )
     bad_tr = ChessTrace(game_id="bad", moves=tuple(bad_moves))
@@ -82,6 +83,18 @@ def test_knight_reuse_records_lhs_from():
     ng5 = tr.moves[4]
     assert ng5.san == "Ng5"
     assert ng5.lhs_from == 2   # the Nf3 ply
+
+
+def test_captured_piece_type_recorded():
+    """captured_piece_type on Nxe5 is PAWN; on a non-capture it is None."""
+    sans = ["e4", "e5", "Nf3", "Nc6", "Nxe5"]
+    tr = trace_from_sans(sans)
+    assert tr is not None
+    nxe5 = tr.moves[4]
+    assert nxe5.captured_piece_type == chess.PAWN
+    # Non-capture should be None.
+    e4 = tr.moves[0]
+    assert e4.captured_piece_type is None
 
 
 def test_capture_by_unmoved_piece_rhs_from_none():

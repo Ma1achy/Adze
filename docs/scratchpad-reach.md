@@ -392,12 +392,31 @@ piece-type composition per provenance class before interpreting any coupling.
 PGN slice. If χ²/dof < 20 and the conditional consumer-distance distributions
 overlap substantially across provenance classes, proceed to VAE training.
 
-**Status:** built and tested (9 Aug 2026). `src/adze/data/chess.py`,
-`src/adze/eval/chess_strata.py`, `scripts/m9_chess_diag.py`, and
-`tests/test_m9_chess.py` in place; 17 tests pass. Smoke run on 200 random games
-gives χ²/dof = 11.2 (below the 20 threshold) with per-piece-type values of 2.8
-(PAWN) and 2.7 (QUEEN) — comparable to the decorrelated arithmetic generator's
-4.5. Diagnostic pending a Lichess classical/rapid PGN download.
+**Status:** CLOSED — chess has the same weld, worse than the arithmetic tree.
+
+**Diagnostic result (9 Aug 2026):** 5,000 Lichess games (2013-01, rapid/classical
+filter), χ²/dof = **604** against thresholds of 20 (proceed) / 50 (investigate).
+
+**The mechanism:** tactical clustering. `both-from-earlier` lands at d=1 in 46.5%
+of cases (p90 = d=10). These are pieces that moved and got immediately exchanged
+— re-captures, tactical sequences. `both-leaves` is mostly first-time pawn moves
+that sit for many plies (p90 = d=38). The coupling is not tree topology; it is
+chess tactics.
+
+**Per piece type:** every type above 50 on its own (PAWN 128.5, KNIGHT 258.6,
+BISHOP 222.7, ROOK 146.6, QUEEN 117.7). Stratifying by moving piece does not
+remove the coupling — it is structural, not mobility alone.
+
+**Captured piece type within both-from-earlier:** 45% PAWN, 20% KNIGHT —
+ordinary tactical captures, not queen-captures-queen. Two mobility draws, but both
+are ordinary tactical play, not a high-mobility corner.
+
+**Conclusion:** chess does not rescue the reach question. The domain has a
+provenance–distance coupling that is inherent to real games, not a generator
+artifact. An interior-band cut is not applicable (χ²/dof = 604, far above 50).
+Highly constrained position selection (endgame tablebases, specific opening lines)
+might find a domain subset where distance and provenance are independent, but that
+is a different research question. The reach question remains unanswered.
 
 ---
 

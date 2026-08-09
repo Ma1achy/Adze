@@ -78,16 +78,20 @@ class ChessMove:
     """One ply in a chess game — structural analogue of arithmetic `Step`.
 
     Shapes / semantics:
-        san       : Standard Algebraic Notation string, e.g. "Nf3", "exd5",
-                    "O-O", "e8=Q".
-        piece_type: chess.PieceType of the piece doing the moving AFTER the ply
-                    (relevant for promotions: the queen's type, not the pawn's).
-        from_sq   : 0-63 origin square.
-        to_sq     : 0-63 destination square.
-        is_capture: True for captures and en-passant; False for quiet moves and
-                    castling (castling uses rhs_from, not is_capture).
-        lhs_from  : ply index that last moved the moving piece, or None.
-        rhs_from  : ply index that last moved the captured/rook piece, or None.
+        san                : Standard Algebraic Notation string, e.g. "Nf3",
+                             "exd5", "O-O", "e8=Q".
+        piece_type         : chess.PieceType of the piece doing the moving AFTER
+                             the ply (promotions: queen's type, not the pawn's).
+        from_sq            : 0-63 origin square.
+        to_sq              : 0-63 destination square.
+        is_capture         : True for captures and en-passant; False for quiet
+                             moves and castling (castling uses rhs_from).
+        captured_piece_type: chess.PieceType of the captured piece, or None.
+                             For en-passant this is always PAWN. For castling
+                             and quiet moves, always None.
+        lhs_from           : ply index that last moved the moving piece, or None.
+        rhs_from           : ply index that last moved the captured/rook piece,
+                             or None.
     """
 
     san: str
@@ -95,6 +99,7 @@ class ChessMove:
     from_sq: int
     to_sq: int
     is_capture: bool
+    captured_piece_type: int | None
     lhs_from: int | None
     rhs_from: int | None
 
@@ -188,8 +193,9 @@ def _game_to_moves(game: chess.pgn.Game) -> list[ChessMove] | None:
         is_capture = board.is_capture(mv)
         is_ep = board.is_en_passant(mv)
 
-        # --- rhs_from: captured piece / rook ---
+        # --- rhs_from and captured_piece_type: captured piece / rook ---
         rhs_from: int | None = None
+        captured_piece_type: int | None = None
 
         if is_castling:
             # Identify the rook being castled with.
@@ -200,6 +206,7 @@ def _game_to_moves(game: chess.pgn.Game) -> list[ChessMove] | None:
             rook_id = sq_to_piece.get(rook_sq)
             if rook_id is not None:
                 rhs_from = last_moved.get(rook_id)
+            # captured_piece_type stays None — castling is not a capture
 
         elif is_ep:
             # En-passant: the captured pawn is on a different square from to_sq.
@@ -209,11 +216,15 @@ def _game_to_moves(game: chess.pgn.Game) -> list[ChessMove] | None:
             if cap_id is not None:
                 rhs_from = last_moved.get(cap_id)
                 sq_to_piece.pop(ep_sq, None)
+            captured_piece_type = chess.PAWN  # always a pawn in en-passant
 
         elif is_capture:
             cap_id = sq_to_piece.get(to_sq)
             if cap_id is not None:
                 rhs_from = last_moved.get(cap_id)
+            cap_piece = board.piece_at(to_sq)
+            if cap_piece is not None:
+                captured_piece_type = cap_piece.piece_type
 
         # --- lhs_from: moving piece ---
         lhs_from: int | None = last_moved.get(moving_id)
@@ -259,6 +270,7 @@ def _game_to_moves(game: chess.pgn.Game) -> list[ChessMove] | None:
             from_sq=from_sq,
             to_sq=to_sq,
             is_capture=is_capture or is_ep,
+            captured_piece_type=captured_piece_type,
             lhs_from=lhs_from,
             rhs_from=rhs_from,
         ))
