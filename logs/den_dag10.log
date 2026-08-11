@@ -1,0 +1,42 @@
+config        configs/dag10.yaml  (dag10)
+device        mps
+latents       (40000, 40, 16)  [n, N=B*K, D]  scale 0.8182
+              real positions 100.0%, std 1.0000, RMS norm 4.000 vs sqrt(D)=4.000
+params        1.46M
+shapes        B=10 K=4 D=16 N=40
+
+==========================================================================
+GATE — overfit one batch (8 examples, loss to near zero)
+==========================================================================
+  initial loss  1.992153
+  final loss    0.029591
+  per block (final / initial):
+    b=0  10.93%   <- no prefix; unconditional, floors above the rest
+    b=1   0.51%
+    b=2   0.45%
+    b=3   0.45%
+    b=4   0.50%
+    b=5   0.42%
+    b=6   0.54%
+    b=7   0.44%
+    b=8   0.43%
+    b=9   0.40%
+  PASS — worst conditioned block 0.54% of initial (threshold 2%)
+
+regime A + B mix (50%/50%) — 20000 steps, batch 256, lr 0.001
+  step      1  loss 1.998765  block all  regime B steps 1
+  step   2000  loss 0.702857  block all  regime B steps 1000
+  step   4000  loss 0.649875  block all  regime B steps 2027
+  step   6000  loss 0.819847  block all  regime B steps 3033
+  step   8000  loss 0.598382  block all  regime B steps 4036
+  step  10000  loss 0.793204  block all  regime B steps 5033
+  step  12000  loss 0.565810  block all  regime B steps 6011
+  step  14000  loss 0.573034  block all  regime B steps 6991
+  step  16000  loss 0.570355  block all  regime B steps 7965
+  step  18000  loss 0.560263  block all  regime B steps 8955
+  step  20000  loss 0.787621  block all  regime B steps 9994
+
+trained in 3688.9s
+regime B      9994/20000 steps (50.0% realised, 50% requested)
+regime A      10006 steps
+checkpoint    checkpoints/denoiser_dag10_d16_mixedP50.pt

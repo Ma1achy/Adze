@@ -111,6 +111,14 @@ def main() -> None:
                    help="keep only pairs whose corrupted block lies in the "
                         "decorrelated generator's interior band, where distance "
                         "and provenance are independent")
+    p.add_argument("--band-width", type=int, default=None,
+                   help="Override the interior band's width. Defaults to the "
+                        "config's data.distance_max. The band keeps blocks with "
+                        "b >= 2 and b + width <= n - 1, so a width at or above "
+                        "n - 3 admits nothing: at chain 10 a width of 8 is "
+                        "arithmetically empty. Set this to compare across configs "
+                        "whose distance_max differs — dec10's committed numbers "
+                        "were taken at width 6 (b in {2, 3}).")
     p.add_argument("--out", type=Path, help="per-trace records, for m7_strata.py")
     args = p.parse_args()
 
@@ -129,6 +137,10 @@ def main() -> None:
     # `generate_dataset` seeds each trace from `seed * 1_000_003 + i`, so an
     # unfiltered run reproduces the committed numbers exactly.
     build = CONSTRUCTORS[args.corrupt]
+    band = args.band_width if args.band_width is not None else config.data.distance_max
+    if args.interior_band:
+        print(f"selection    interior band width {band} "
+              f"(blocks 2..{config.data.chain_steps - 1 - band})")
     pool, pairs = args.traces * 2, []
     while True:
         traces = make_dataset(config, pool, config.data.seed + 909_091)
@@ -138,7 +150,7 @@ def main() -> None:
                       if len(t.steps) >= 2]
         pairs = select(candidates, blocks, args.traces,
                        args.full_length_only, args.require_provenance,
-                       config.data.distance_max if args.interior_band else None)
+                       band if args.interior_band else None)
         if len(pairs) >= args.traces or pool >= 400_000:
             break
         pool *= 4

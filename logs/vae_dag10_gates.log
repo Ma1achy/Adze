@@ -1,0 +1,34 @@
+config        configs/dag10.yaml  (dag10)
+device        mps
+vocab         19 symbols, max_len 24
+params        1.74M
+train steps   400000 from 40000 traces
+held-out      40000 steps, 630 unseen (1.6%)
+optimiser     60000 steps, batch 256, lr 0.0003, kl_beta 0.001
+
+resumed       from checkpoints/vae_dag10_d16_resume.pt at step 60000
+
+
+trained in 0.0s
+
+==========================================================================
+GATE 1 — held-out reconstruction (need > 95% exact match)
+==========================================================================
+  token accuracy         100.00%
+  exact match             99.92%   <- the gate
+  exact match, unseen     99.37%   (630 steps not present in training)
+  PASS
+
+==========================================================================
+GATE 2 — latent use (need a LARGE gap)
+==========================================================================
+  clean exact match       99.92%
+  shuffled latents         0.01%
+  gap                     99.91%   <- the gate
+  random latents           0.00%   (cross-check)
+
+  PASS — shuffling the latent destroys reconstruction.
+
+checkpoint    checkpoints/vae_dag10_d16.pt
+latent cache  data/cache/latents_dag10_d16.pt  (40000, 40, 16)  [n, N=B*K, D]
+scale         0.8182  (scaled latent std 1.0000, per-position norm 3.966 vs sqrt(D)=4.000)

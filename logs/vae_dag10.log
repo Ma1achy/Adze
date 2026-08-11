@@ -1,0 +1,29 @@
+config        configs/dag10.yaml  (dag10)
+device        mps
+vocab         19 symbols, max_len 24
+params        1.74M
+train steps   400000 from 40000 traces
+held-out      40000 steps, 630 unseen (1.6%)
+optimiser     60000 steps, batch 256, lr 0.0003, kl_beta 0.001
+
+  step      1  loss  4.0156  recon  3.9998  kl   15.826  held-out exact   0.0%
+  step   6000  loss  0.1153  recon  0.0386  kl   76.608  held-out exact  89.3%
+  step  12000  loss  0.0959  recon  0.0281  kl   67.881  held-out exact  95.5%
+  step  18000  loss  0.0759  recon  0.0125  kl   63.399  held-out exact  98.2%
+  step  24000  loss  0.0694  recon  0.0116  kl   57.829  held-out exact  98.8%
+  step  30000  loss  0.0678  recon  0.0102  kl   57.587  held-out exact  99.4%
+  step  36000  loss  0.0658  recon  0.0122  kl   53.627  held-out exact  99.5%
+  step  42000  loss  0.0585  recon  0.0058  kl   52.665  held-out exact  99.8%
+  step  48000  loss  0.0597  recon  0.0085  kl   51.239  held-out exact  99.8%
+  step  54000  loss  0.0538  recon  0.0036  kl   50.119  held-out exact  99.9%
+  step  60000  loss  0.0562  recon  0.0060  kl   50.174  held-out exact  99.9%
+
+trained in 4226.4s
+
+==========================================================================
+GATE 1 — held-out reconstruction (need > 95% exact match)
+==========================================================================
+  token accuracy         100.00%
+  exact match             99.92%   <- the gate
+  exact match, unseen     99.37%   (630 steps not present in training)
+  PASS
