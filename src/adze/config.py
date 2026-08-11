@@ -34,11 +34,14 @@ class DataConfig:
     # See adze.data.build. Change the config `name` alongside it: the two produce
     # incompatible caches and checkpoints.
     generator: str = "tree"
-    # decorrelated only. `chain_steps` is the exact step count, so B must be at
-    # least this; `distance_max` bounds the consumer draw and is what removes
-    # position from the distance distribution. Usable distances run 1..dmax-1.
+    # decorrelated and dag. `chain_steps` is the exact step count, so B must be
+    # at least this; `distance_max` bounds the consumer draw. Usable distances
+    # run 1..dmax-1. dag_min/max_consumers control how many consumers each step
+    # requests; ignored for all other generators.
     chain_steps: int = 10
     distance_max: int = 6
+    dag_min_consumers: int = 1
+    dag_max_consumers: int = 2
     # Ceiling on |result|, enforced when the operator is chosen. It sets the
     # CHARACTER of the task, not just its range: the leaf fixed point converges
     # against it, so cap 1000 produced three-digit arithmetic the denoiser could

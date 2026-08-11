@@ -1,0 +1,30 @@
+name: dag10
+data:
+  n_train: 100
+  n_val: 20
+  generator: dag
+  chain_steps: 10             # every trace is exactly this long; no padding
+  distance_max: 8             # matches the m9_dag_diag defaults the cell counts came from
+  dag_min_consumers: 1
+  dag_max_consumers: 2        # MAX_IN_DEGREE is 2, so this is the ceiling
+  max_depth: 3                # unused by the dag builder; kept for schema
+  operand_max: 20
+  blocks_per_sequence: 10     # B — equals chain_steps, so nothing is dropped
+  seed: 0
+  leaf_distribution: empirical
+  leaf_iterations: 6
+  magnitude_cap: 100
+model:
+  latents_per_block: 4        # K
+  latent_dim: 16              # D
+  vae:      {n_layers: 4, d_model: 128, n_heads: 4}
+  denoiser: {n_layers: 4, d_model: 128, n_heads: 4}
+train:
+  batch_size: 8
+  lr: 3.0e-4
+  steps: 500
+  regime_b_prob: 0.5
+  kl_beta: 1.0e-3
+sample:
+  nfe: 8
+device: mps

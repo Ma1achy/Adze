@@ -22,13 +22,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from adze.data.dag import generate_dag_dataset
 from adze.data.decorrelated import generate_decorrelated_dataset
 from adze.data.generate import Trace, configured_leaves, generate_dataset
 
 if TYPE_CHECKING:
     from adze.config import Config
 
-GENERATORS = ("tree", "decorrelated")
+GENERATORS = ("tree", "decorrelated", "dag")
 
 
 def _builder(config: "Config"):
@@ -51,6 +52,18 @@ def _builder(config: "Config"):
                 magnitude_cap=config.data.magnitude_cap,
                 distance_max=config.data.distance_max)
         return build
+    if g == "dag":
+        def build(n, seed, leaf_values):
+            return generate_dag_dataset(
+                n=n, seed=seed,
+                n_steps=config.data.chain_steps,
+                min_consumers=config.data.dag_min_consumers,
+                max_consumers=config.data.dag_max_consumers,
+                distance_min=1,
+                distance_max=config.data.distance_max,
+                operand_max=config.data.operand_max, leaf_values=leaf_values,
+                magnitude_cap=config.data.magnitude_cap)
+        return build
     raise ValueError(f"data.generator must be one of {GENERATORS}, got {g!r}")
 
 
@@ -71,6 +84,17 @@ def leaf_pool(config: "Config") -> tuple[int, ...] | None:
             config.data.leaf_distribution, config.data.leaf_iterations,
             config.data.seed, config.data.max_depth, config.data.operand_max,
             config.data.magnitude_cap)
+    if config.data.generator == "dag":
+        # Not the decorrelated pool. Fan-out means a value can be consumed twice
+        # and the computed-operand mix differs, so the result distribution — which
+        # IS the pool — is a different distribution. Iterating the wrong generator
+        # here reintroduces the input/output magnitude mismatch the fixed point
+        # exists to remove, silently.
+        return _dag_leaves(
+            config.data.leaf_iterations, config.data.seed,
+            config.data.chain_steps, config.data.operand_max,
+            config.data.magnitude_cap, config.data.distance_max,
+            config.data.dag_min_consumers, config.data.dag_max_consumers)
     return _decorrelated_leaves(
         config.data.leaf_iterations, config.data.seed,
         config.data.chain_steps, config.data.operand_max,
@@ -92,6 +116,34 @@ def _decorrelated_leaves(iterations, seed, chain_steps, operand_max,
             n=20_000, seed=seed + i, min_steps=chain_steps, max_steps=chain_steps,
             operand_max=operand_max, leaf_values=leaves,
             magnitude_cap=magnitude_cap, distance_max=distance_max)
+        results = tuple(abs(s.result) for t in traces for s in t.steps
+                        if abs(s.result) >= 1)
+        if i < iterations:
+            leaves = results
+    out = leaves if leaves is not None else tuple(range(1, operand_max + 1))
+    _LEAF_CACHE[key] = out
+    return out
+
+
+def _dag_leaves(iterations, seed, chain_steps, operand_max, magnitude_cap,
+                distance_max, min_consumers, max_consumers) -> tuple[int, ...]:
+    """`fixed_point_leaves` for the DAG generator. Cached; ~40s.
+
+    Same iteration as `_decorrelated_leaves`, run on the DAG builder so the pool
+    is the fixed point of the distribution this config actually emits.
+    """
+    key = ("dag", iterations, seed, chain_steps, operand_max, magnitude_cap,
+           distance_max, min_consumers, max_consumers)
+    if key in _LEAF_CACHE:
+        return _LEAF_CACHE[key]
+    leaves: tuple[int, ...] | None = None
+    for i in range(iterations + 1):
+        traces = generate_dag_dataset(
+            n=20_000, seed=seed + i, n_steps=chain_steps,
+            min_consumers=min_consumers, max_consumers=max_consumers,
+            distance_min=1, distance_max=distance_max,
+            operand_max=operand_max, leaf_values=leaves,
+            magnitude_cap=magnitude_cap)
         results = tuple(abs(s.result) for t in traces for s in t.steps
                         if abs(s.result) >= 1)
         if i < iterations:
