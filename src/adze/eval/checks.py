@@ -13,6 +13,17 @@ from __future__ import annotations
 import torch
 
 
+# How many steps go through the model at once. The held-out set is 40k steps and
+# a decode materialises [40000, max_len, vocab] logits; gate 2 decodes seventeen
+# times, so the peak is not one of those but the MPS allocator's high-water mark
+# across all of them. On unified memory that comes out of the same pool as every
+# other application: a full-set gate 2 paged the machine out and sat in
+# uninterruptible sleep for two hours without producing a number. Chunking is
+# exactly equivalent — accuracies accumulate as counts, not as means of means —
+# and it is what makes the gate finish.
+_CHUNK = 2048
+
+
 def _accuracies(logits: torch.Tensor, tokens: torch.Tensor) -> tuple[float, float]:
     """Argmax reconstruction accuracy against the true tokens.
 
@@ -25,6 +36,42 @@ def _accuracies(logits: torch.Tensor, tokens: torch.Tensor) -> tuple[float, floa
     token_acc = correct.float().mean().item()
     seq_acc = correct.all(dim=-1).float().mean().item()
     return token_acc, seq_acc
+
+
+def _counts(logits: torch.Tensor, tokens: torch.Tensor) -> tuple[int, int]:
+    """(correct tokens, exactly-reconstructed steps) for one chunk.
+
+    Counts rather than rates so chunks sum. Every step is the same length here,
+    so the token rate would survive a mean-of-means, but the exact-match rate
+    only survives it when the chunks divide evenly — count both and be done.
+    """
+    correct = logits.argmax(dim=-1) == tokens
+    return int(correct.sum().item()), int(correct.all(dim=-1).sum().item())
+
+
+@torch.no_grad()
+def _encode_chunked(vae: torch.nn.Module, tokens: torch.Tensor) -> torch.Tensor:
+    """Posterior means for `tokens`, `_CHUNK` steps at a time. Shape [n, K, D]."""
+    return torch.cat([vae.encoder(tokens[i:i + _CHUNK])[0]
+                      for i in range(0, tokens.shape[0], _CHUNK)])
+
+
+@torch.no_grad()
+def _decode_accuracies(vae: torch.nn.Module, mu: torch.Tensor,
+                       tokens: torch.Tensor) -> tuple[float, float]:
+    """Decode `mu` in chunks and score against `tokens`. Shapes must agree in n.
+
+    `mu` may be a shuffled or random stand-in for the true posterior; the pairing
+    is decided by the caller, so chunking never changes which latent meets which
+    step.
+    """
+    n_tok = tokens.numel()
+    tok_hits = seq_hits = 0
+    for i in range(0, tokens.shape[0], _CHUNK):
+        t, s = _counts(vae.decoder(mu[i:i + _CHUNK]), tokens[i:i + _CHUNK])
+        tok_hits += t
+        seq_hits += s
+    return tok_hits / n_tok, seq_hits / tokens.shape[0]
 
 
 @torch.no_grad()
@@ -40,9 +87,8 @@ def reconstruction_accuracy(
     PASS: exact_match > 0.95.
     """
     vae.eval()
-    mu, _ = vae.encoder(tokens)
-    logits = vae.decoder(mu)
-    token_acc, seq_acc = _accuracies(logits, tokens)
+    mu = _encode_chunked(vae, tokens)
+    token_acc, seq_acc = _decode_accuracies(vae, mu, tokens)
     return {"token_acc": token_acc, "exact_match": seq_acc}
 
 
@@ -74,23 +120,25 @@ def latent_use_check(
     `random_acc` is reported alongside as the weaker cross-check.
     """
     vae.eval()
-    mu, _ = vae.encoder(tokens)
+    mu = _encode_chunked(vae, tokens)
 
-    clean_logits = vae.decoder(mu)
-    _, clean_acc = _accuracies(clean_logits, tokens)
+    _, clean_acc = _decode_accuracies(vae, mu, tokens)
 
     shuffled_accs: list[float] = []
     for _ in range(n_shuffles):
         # A derangement is not enforced; with batch >> 1 the fixed-point rate is
         # ~1/batch and would flatter the result by well under a percentage point.
+        # The permutation is drawn over the WHOLE set before chunking — drawing
+        # it per chunk would only ever pair a step with a neighbour from the same
+        # 2048, which is a weaker shuffle and an easier gate.
         perm = torch.randperm(mu.shape[0], device=mu.device)
-        _, acc = _accuracies(vae.decoder(mu[perm]), tokens)
+        _, acc = _decode_accuracies(vae, mu[perm], tokens)
         shuffled_accs.append(acc)
     shuffled_acc = sum(shuffled_accs) / len(shuffled_accs)
 
     random_accs: list[float] = []
     for _ in range(n_shuffles):
-        _, acc = _accuracies(vae.decoder(torch.randn_like(mu)), tokens)
+        _, acc = _decode_accuracies(vae, torch.randn_like(mu), tokens)
         random_accs.append(acc)
     random_acc = sum(random_accs) / len(random_accs)
 
