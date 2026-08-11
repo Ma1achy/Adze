@@ -557,13 +557,57 @@ far consumers and one-leaf near consumers carry different amounts of information
 about the producer (they may not, if the far consumer's second operand is also
 constrained).
 
-**What would make it uninformative:**
-- Model trained on DAG data fails to learn ANY reconstruction (draft quality
-  < 10% at evaluation) → the training signal is wrong
-- Arm (d) ≈ arm (b) ≈ arm (c) but all WELL ABOVE chance → consumers confuse
-  rather than inform, and the design doesn't test reach
-- Consumer provenance confound resolves the result before distance can be
-  measured → stratify (b)−(d) vs (c)−(d) by consumer provenance class
+**Contingency branch registered before training, 9 Aug 2026:**
+
+The arm (d) baseline controls the |S| confound (mask volume) but NOT the
+treatment composition. The confound in (b) vs (c) is in the EVIDENCE ITSELF:
+
+  far consumers are 93% both-from-earlier (BFE)
+  near consumers are 57% one-leaf / 43% BFE
+
+A one-leaf consumer has a literal as its other operand — directly visible in the
+text. A BFE consumer's other operand is itself computed, so pinning the target
+requires tracing further back. These are different evidence QUALITY levels,
+independent of distance.
+
+Arm (d) does not touch this. (b)−(d) measures mostly-BFE far evidence;
+(c)−(d) measures mixed near evidence. The confound survives the subtraction.
+
+**Decision tree, to be applied after the number exists:**
+
+  ① ALL arms (b), (c), (d) at chance:
+       → Confound is moot. A model that cannot repair with any evidence is not
+         differentially affected by evidence composition. Clean null answer.
+         Report this and stop.
+
+  ② Any arm separates from chance:
+       → Stratify by CONSUMER provenance class before interpreting. The single
+         cell that cannot be confounded by evidence quality is:
+           near consumer = BFE AND far consumer = BFE
+         (~217 records out of 543 from the diagnostic). Thin, but it is the
+         cell where both arms provide the same QUALITY of evidence and only
+         distance changes. If (b)−(d) > (c)−(d) in that cell, it is a genuine
+         distance effect. If not, the separation was evidence-quality, not reach.
+
+  ③ (b)−(d) >> (c)−(d) specifically on the BFE×BFE cell:
+       → The result holds under the best available control. Report with cell
+         count prominently; 217 records is thin for a headline claim and needs
+         at least a second seed to confirm.
+
+  ④ (c)−(d) >> (b)−(d):
+       → Near evidence outperforms far, opposite of the reach prediction. Either
+         the null is right and this is noise, or near evidence is informative and
+         far is not — consistent with reach failing. Report as a null with
+         directional note.
+
+State which branch before reporting any number. Do not reorder the branches after
+seeing the result.
+
+**What would make it uninformative regardless of branch:**
+- Model fails to learn ANY reconstruction (draft quality < 10%) → training
+  signal is wrong; stop before the intervention
+- Arm (d) ≈ arm (b) ≈ arm (c) but all well ABOVE chance → consumers confuse
+  rather than inform; design doesn't test reach
 
 **Status:** generator and diagnostic built. Training not started. No model
 has been trained on DAG data. Intervention spec is pre-registered here before

@@ -377,6 +377,67 @@ We suggest that any distance or reach profile reported on structured reasoning
 data be accompanied by the same decomposition, and — where a genuine reach claim
 is intended — a generator whose consumer assignment does not inherit the layout.
 
+### 10.1 Four processes, and a weld that moves rather than vanishing
+
+The recommendation above — redesign the generator — was then attempted four times.
+It is worth recording what happened, because the outcome was not the one the
+recommendation anticipates.
+
+| process | what was changed | coupling of consumer distance to provenance, χ²/dof |
+|---|---|---|
+| expression tree, post-order | the original design | 374.8 |
+| decorrelated chain | consumers drawn by bounded distance; provenance emergent | 4.5 |
+| chess (5,000 rated Lichess games) | a natural, non-synthetic process | 604.0 |
+| multi-consumer DAG | one value consumed at two distances at once | 828.8 |
+
+The decorrelated chain is the only entry that broke the coupling, and it broke the
+measurement with it: severing the link between a value's provenance and its
+consumer's position removed the adjacency the effect was carried by, so the
+generator that made distance mean what it says is also the one on which distance
+does nothing. Chess was chosen because it is not synthetic and therefore not
+subject to a designer's linearisation; its coupling is *worse* than the tree's,
+and every piece type exceeds the threshold on its own. The DAG was chosen because
+a value consumed at two distances is its own control; the coupling moved off the
+producer and reappeared one level up, as fan-out × provenance (χ²/dof = 1080 —
+both-from-earlier steps have already spent in-degree slots, so 17.3% of them
+acquire no consumer at all) and as consumer position (χ²/dof = 317 — far consumers
+are 93% both-from-earlier against 43% for near consumers, because a step late in a
+trace has more earlier results available to consume).
+
+Four processes, three of them designed specifically to remove the weld, and it
+moved each time rather than disappearing. That is long enough to state as a
+property rather than as a run of bad luck, and the property is not about any of
+these generators:
+
+> **In any sequential process with accumulating state, how far a value travels
+> before it is used and what kind of value it is are both functions of position in
+> the sequence.** Later positions have more prior state available to consume, so
+> they are compositionally different; and a value's remaining distance to any
+> consumer is bounded by how much sequence is left. Provenance and reach are
+> therefore two readings of the same coordinate, and a design that decouples them
+> has removed the accumulation that made the process sequential in the first
+> place.
+
+The tree's version of this is the sharpest and the most obviously structural — a
+step consuming two earlier results roots a larger subtree, so post-order emission
+places its consumer further away. But the chess version has no tree, no
+linearisation choice, and no designer; the DAG version was built from an explicit
+distance draw specifically to prevent it. The mechanism differs each time. The
+coupling does not.
+
+**This argues against a fifth generator.** Each attempt cost a full design,
+implementation, and diagnostic cycle, and each ended with the coupling relocated
+rather than removed. The three that failed did not fail for shared incidental
+reasons that a fourth design could avoid; they failed for the reason above, which
+a sequential process cannot be designed out of. Two routes remain and neither is
+another generator: **stratify and report the composition table alongside every
+distance cut** — free, already implemented, and the thing that overturned three
+conclusions in this project — or **abandon the marginal distance estimand** and
+report only within-record interventions, where provenance is held constant by
+construction because it is the same record. The second is what the interventions
+in §3 and §6 already do, and it is why they survived when the distance profile did
+not.
+
 ## 11. Method note: the interior band
 
 We restrict the distance estimand to a pre-specified interior band in which the
