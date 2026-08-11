@@ -1,0 +1,107 @@
+
+denoiser      checkpoints/denoiser_dag10_d16_mixedP50.pt  4L x 128w
+vae           checkpoints/vae_dag10_d16.pt
+records       543 held-out, one qualifying step per trace
+restriction   exactly one consumer at d <= 2 AND exactly one at d >= 5
+corruption    random signed delta on the result (M7 corrupt_step)
+sampling      global mask, nfe 32, eta 1.0, erasure seed 0 (shared across arms)
+selection     ORACLE — the corrupted index is known. Upper bound.
+
+==============================================================================
+PRE-REGISTERED DECISION TREE — docs/scratchpad-reach.md §11
+Stated before any number below. Do not reorder.
+==============================================================================
+  (1) ALL ARMS AT CHANCE
+      -> the consumer-provenance confound is moot, the answer is clean,
+         report the null and stop. This is the REGISTERED PREDICTION.
+
+  (2) ANY ARM SEPARATES FROM CHANCE
+      -> stratify by CONSUMER provenance before interpreting anything.
+         The single unconfoundable cell is near=BFE AND far=BFE.
+
+  (3) (b)-(d) >> (c)-(d) ON THE BFE x BFE CELL
+      -> genuine distance effect. Report the cell count prominently; it is
+         thin (~217 of 543) and needs a second seed before it is a claim.
+
+  (4) (c)-(d) >> (b)-(d)
+      -> near beats far. Report as a null for the distance claim, with a
+         directional note.
+
+  UNINFORMATIVE REGARDLESS:
+      draft quality below 10%, or (d) ~ (b) ~ (c) all well above chance.
+
+  Reference for every arm is CHANCE (permutation null, grouped by block),
+  never `none` and never zero.
+==============================================================================
+
+==============================================================================
+THE FOUR ARMS — RESULT, against a permutation null
+==============================================================================
+arm                                        RESULT   chance       z   formed
+(a) both visible      — reference            1.5%     0.6%    2.63    95.8%
+(b) near erased       — FAR evidence only     1.1%     0.6%    1.49    97.2%
+(c) far erased        — NEAR evidence only     1.5%     0.6%    2.47    96.7%
+(d) both erased       — no consumer evidence     0.7%     0.7%    0.22    96.9%
+
+  n = 543. z is against the permutation chance rate with a binomial SE:
+  it is WITHIN-RUN eval noise on one seed, not a between-run bar.
+
+==============================================================================
+PRIMARY — (b) far evidence only  vs  (c) near evidence only
+==============================================================================
+  (b) - (c)  =  -0.4%
+  PAIRED (McNemar) on RESULT: b-only 5, c-only 7,
+    discordant 12, chi2(1) cc = 0.08
+    NOT significant
+
+ROBUSTNESS — difference of differences against (d)
+  (b) - (d)  =  +0.4%
+  (c) - (d)  =  +0.7%
+  DiD        =  -0.4%
+  (d) subtracts out identically from both, so DiD equals (b)-(c) by
+  construction. It fixes the BASELINE, not the treatment composition.
+
+==============================================================================
+BRANCH
+==============================================================================
+  (2) Arms a, c separate from chance.
+      Stratifying by CONSUMER provenance before interpretation.
+      The unconfoundable cell is near=BFE AND far=BFE.
+
+near x far consumer provenance                  n       a       b       c       d
+one-leaf x both-from-earlier                  284    1.8%    1.1%    2.1%    0.4%
+both-from-earlier x both-from-earlier         226    0.9%    1.3%    0.9%    1.3%
+
+  Cells at or below n = 50 are NOT printed — they cannot support a rate:
+    one-leaf x one-leaf  (n = 23)
+    both-from-earlier x one-leaf  (n = 10)
+
+  BFE x BFE — n = 226  THE UNCONFOUNDABLE CELL
+    (b)-(d) +0.0%   (c)-(d) -0.4%   (b)-(c) +0.4%
+    McNemar b-only 2, c-only 1, chi2 0.00 — NOT significant
+    ONE SEED. A shape read off this cell is not a claim until
+    a second seed reproduces it.
+
+wrote 543 records to runs/dag10_intervention.json
+
+EXAMPLES — same record, same corruption, same noise; only which
+consumer survives differs
+------------------------------------------------------------------------------
+  block 4  d_near 2  d_far 5  want '51 + 22 = 73'  (corrupt '51 + 22 = 68')
+       b  '74 - 41 = 17'
+       c  '94 - 41 = 17'
+  block 4  d_near 1  d_far 5  want '30 - 80 = -50'  (corrupt '30 - 80 = -59')
+       b  '84 - 40 = 34'
+       c  '43 - 40 = 33'
+  block 2  d_near 2  d_far 7  want '28 + -87 = -59'  (corrupt '28 + -87 = -65')
+       b  '42 - 49 = 31'
+       c  '42 - 49 = -7'
+  block 1  d_near 1  d_far 5  want '83 - 48 = 35'  (corrupt '83 - 48 = 34')
+       b  '99 - 42 = 43'
+       c  '92 - 45 = 45'
+  block 4  d_near 2  d_far 5  want '1 + -7 = -6'  (corrupt '1 + -7 = -3')
+       b  '17 - 40 = 1'
+       c  '34 - 44 = 11'
+  block 2  d_near 2  d_far 5  want '81 - 82 = -1'  (corrupt '81 - 82 = -5')
+       b  '88 - 50 = 18'
+       c  '48 - 50 = 1'
