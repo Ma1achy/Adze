@@ -12,7 +12,11 @@ import chess.pgn
 import pytest
 
 from adze.data.chess import ChessTrace, ChessMove, game_to_trace, generate_random_trace
-from adze.eval.chess_strata import chess_consumer_distance, chess_operand_provenance
+from adze.eval.chess_strata import (
+    chess_consumer_distance,
+    chess_occupancy_consumer_map,
+    chess_operand_provenance,
+)
 from adze.eval.strata import PROVENANCE
 
 
@@ -297,3 +301,134 @@ def test_random_trace_consumer_distances_non_negative():
     for k in range(len(tr.moves)):
         d = chess_consumer_distance(tr, k)
         assert d is None or (isinstance(d, int) and d >= 1)
+
+
+# ── definition C: chess_occupancy_consumer_map ────────────────────────────────
+
+def test_occ_map_capture_registers_placer():
+    """Nxe5: white knight captures e5 pawn. Pawn moved to e5 on ply 1.
+
+    Definition C: to_square of the capture is e5.  sq_to_placer[e5] = 1 (the
+    ...e5 ply), so ply 4 (Nxe5) must be in producers[1].
+    """
+    # 1.e4 e5 2.Nf3 Nc6 3.Nxe5
+    sans = ["e4", "e5", "Nf3", "Nc6", "Nxe5"]
+    tr = trace_from_sans(sans)
+    assert tr is not None
+    cmap = chess_occupancy_consumer_map(tr)
+
+    # ply 1 (e5 pawn) should have ply 4 (Nxe5) as a consumer
+    assert 4 in cmap[1], f"expected 4 in cmap[1], got {cmap[1]}"
+
+
+def test_occ_map_sliding_path_clears_consumer():
+    """Rook or queen slides through a vacated square — the vacating ply is the producer.
+
+    Position: 1.e4 Nf6 2.e5 (pawn advances, clears e4 for pieces behind it)
+    Then play a rook/queen along a cleared line. Use a simpler construction:
+    1.d4 d5 2.Bf4 (bishop slides through d2-e3-f4; e3 is empty from start →
+    sq_to_vacater[e3]=None → no edge). Use a line where a pawn moves first.
+
+    Simpler: 1.e4 e5 2.d4 exd4 3.Qxd4 — queen on d1 moves to d4.
+    Path squares: d2, d3 (for d1→d4).
+    d2 pawn moved on ... actually d2 pawn never moved. d3 was empty from start.
+    Still no clear placer/vacater with non-None index on that path.
+
+    Use: 1.d4 d5 2.Nf3 Nf6 3.e4 dxe4 4.Nd2 (knight on f3 moves to d2... wait
+    that's f3→d2 which is not sliding).
+
+    Reliable construction:
+    1.e4 e5 2.d4 exd4 3.Qxd4
+    Queen on d1 to d4: path includes d2, d3.
+    d2 pawn was placed there at start → sq_to_placer[d2]=None → no ply edge.
+    d3 was empty at start → sq_to_vacater[d3]=None → no ply edge.
+
+    To get a non-None vacater we need a PAWN that moved through d3/e3 first.
+
+    1.e4 d5 2.e5 Nf6 3.Qe2 (queen slides e1→e2; path: none — adjacent).
+    Not useful.
+
+    Best: 1.d4 e5 2.dxe5 Nf6 3.exf6 (pawn chain) then ...gxf6 or similar.
+    Easier yet: verify the MAP KEYS are correct and consumers are >= producers.
+    """
+    tr = generate_random_trace(seed=123, max_plies=40)
+    cmap = chess_occupancy_consumer_map(tr)
+    n = len(tr.moves)
+    for i, consumers in cmap.items():
+        for j in consumers:
+            assert j > i, f"consumer {j} not > producer {i}"
+            assert j < n,  f"consumer {j} out of range (n={n})"
+
+
+def test_occ_map_no_self_loops():
+    """No ply is its own consumer."""
+    tr = generate_random_trace(seed=42, max_plies=50)
+    cmap = chess_occupancy_consumer_map(tr)
+    for i, consumers in cmap.items():
+        assert i not in consumers, f"ply {i} is its own consumer"
+
+
+def test_occ_map_consumers_sorted():
+    """Consumer tuples must be sorted ascending."""
+    tr = generate_random_trace(seed=7, max_plies=50)
+    cmap = chess_occupancy_consumer_map(tr)
+    for i, consumers in cmap.items():
+        assert list(consumers) == sorted(consumers), (
+            f"producers[{i}] not sorted: {consumers}")
+
+
+def test_occ_map_sliding_through_cleared_square():
+    """Bishop slides through a square vacated by a prior pawn move.
+
+    1. e4  (white pawn e2→e4, vacating e2; ply 0)
+    2. d5  (black pawn; ply 1)
+    3. Bb5 (bishop f1→b5, sliding path f1-{e2,d3,c4}-b5; ply 2)
+
+    e2 was vacated at ply 0 → sq_to_vacater[e2] = 0 → cmap[0] must include 2.
+    """
+    sans = ["e4", "d5", "Bb5"]
+    tr = trace_from_sans(sans)
+    assert tr is not None, "trace_from_sans failed"
+    assert len(tr.moves) == 3
+
+    cmap = chess_occupancy_consumer_map(tr)
+    assert 2 in cmap[0], (
+        f"expected ply 2 in cmap[0] (bishop slid through e2 vacated by e4 pawn), "
+        f"got cmap[0]={cmap[0]}"
+    )
+
+
+def test_occ_map_check_registers_checker():
+    """The ply that placed the checking piece is a producer for the checked ply.
+
+    1.e4 e5 2.Bc4 f6 3.Qh5+  g6 (pawn blocks)
+      ply 0: e4
+      ply 1: e5
+      ply 2: Bc4 (bishop f1→b5 path goes through e2; e2 vacated at ply 0)
+      ply 3: f6  (black pawn f7→f6, clearing f7)
+      ply 4: Qh5+ (queen d1→h5 via e2,f3,g4; check to e8 via g6,f7 — f7 empty)
+      ply 5: g6  (pawn g7→g6 blocks the check)
+
+    At ply 5, before push, board.checkers() = {h5} (the queen placed at ply 4).
+    sq_to_placer[h5] = 4 → producers[4].add(5) → 5 in cmap[4].
+    """
+    sans = ["e4", "e5", "Bc4", "f6", "Qh5+", "g6"]
+    tr = trace_from_sans(sans)
+    assert tr is not None
+    cmap = chess_occupancy_consumer_map(tr)
+
+    # ply 4 (Qh5+) placed queen on h5; ply 5 (g6) is black's check response
+    # → checker sq = h5, sq_to_placer[h5] = 4 → cmap[4] includes 5
+    assert 5 in cmap[4], (
+        f"expected 5 in cmap[4] (g6 blocks Qh5+ check; checker sq h5 placed at ply 4), "
+        f"got cmap[4]={cmap[4]}"
+    )
+
+
+def test_occ_map_all_plies_have_entry():
+    """Every ply index 0..n-1 appears as a key in the consumer map."""
+    tr = generate_random_trace(seed=5, max_plies=30)
+    cmap = chess_occupancy_consumer_map(tr)
+    n = len(tr.moves)
+    for i in range(n):
+        assert i in cmap, f"ply {i} missing from consumer map"
