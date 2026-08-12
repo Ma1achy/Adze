@@ -337,24 +337,61 @@ If the window is 2 because the **task's** dependencies reach 2, the right rule i
 
 ---
 
-## Ordering
+## Ordering — SETTLED 12 Aug 2026
+
+The reach line is finished. What follows replaces the running queue below it;
+the queue is kept for its reasoning, not as a work list.
+
+### CLOSED — the whole reach line
+
+**§0, §1, §3, §5, §7, §9, §10, §11, plus chess.**
+
+Reason: **adjacency-dependence, established across four regimes** (§12 below).
+Every design that frees consumer distance from provenance — decorrelated
+arithmetic, dec10, dec7, and the multi-consumer DAG — puts repair at or near
+chance. The reach question is not open; it is answered with a bound. There is no
+measurable far-reach effect of the size the adjacent pin produces, at this scale.
+
+The individual items are closed with it because each of them presupposed a
+measurable reach signal to shape, curriculum toward, or extend.
+
+### NOT CLOSED — two items, and neither is a reach experiment
+
+- **§4 dilated carrier heads**
+- **§8 trained banding**
+
+Both run on the **OLD generator, where repair works**. They are interventions on
+the working regime — architecture and training-mask questions about a signal that
+exists — not attempts to measure reach in a decorrelated one. Nothing in §12
+bears on them. They remain available and unrun.
+
+### SUPERSEDED — a fifth generator
+
+Not closed by failure, superseded by argument. If the entanglement of distance
+and provenance is structural to sequential data with accumulating state — which
+is what §10.1 of `paper.md` argues from four independent processes — then a
+better generator is not the answer. A fifth attempt would be a fifth instance of
+the same result, and the design that decouples the two has removed the
+accumulation that made the process sequential in the first place.
+
+### The queue as it stood
+
+Kept verbatim for its reasoning. All of it is closed except §4 and §8.
 
 1. **§0 free check** — condition the d=3/d=4 nulls on genuine consumers
-2. **§8 banded refine mask** — free, existing checkpoints, and the only item that can produce a positive result
+2. **§8 banded refine mask** — free, existing checkpoints, and the only item that can produce a positive result — **NOT CLOSED**
 3. **§1 frozen-target relay**, R × d, three schedules, six seeds
-4. **§0 multi-consumer generator** — routing vs structural, decisively
+4. **§0 multi-consumer generator** — routing vs structural, decisively — **done, §11**
 5. **§3 distance curriculum / forced courier**
-6. **§4 dilated carrier heads**
+6. **§4 dilated carrier heads** — **NOT CLOSED**
 7. **§2 two-way hierarchy**
 8. **§5 depth**
 9. **§6 relative-position bias**
-10. **§7 chess** — **PROMOTED** (9 Aug 2026). Long-range consumers exist naturally; see §10 below.
+10. **§7 chess** — promoted 9 Aug 2026, closed 10 Aug 2026; see §10.
 
 **Progress:** §1 done (§1a — reach does not compound; the loop shreds context). §5 done, pending seeds (§5a — depth deepens the window, does not widen it).
 
-Remaining order stands as listed. §8 stays where it is rather than being promoted — it is the item most likely to produce a positive result, and it gets stronger the more §5a holds.
-
-**And none of it blocks the writeup.** The finished result — six seeds, the redirected pin, the window at z>4, the conflict cut — has been ready for several sessions. Every session since has added qualifications rather than substance.
+**And none of it blocks the writeup.** The finished result — six seeds, the redirected pin, the conflict cut — has been ready for several sessions. The distance window that used to sit in this list was withdrawn as provenance composition (`paper.md` §5).
 
 ### CLOSED items — settled by the dec7/dec10 results (9 Aug 2026)
 
@@ -368,7 +405,7 @@ Remaining order stands as listed. §8 stays where it is rather than being promot
 
 ---
 
-## 10. Chess — CURRENT HEAD OF THE QUEUE (promoted 9 Aug 2026)
+## 10. Chess — CLOSED (promoted 9 Aug 2026, closed 10 Aug 2026)
 
 The decorrelated synthetic generator was built and measured (three models: +0.43%,
 +0.73%, −0.20%). The null dec7 result established that the confound and the old
@@ -609,6 +646,109 @@ seeing the result.
 - Arm (d) ≈ arm (b) ≈ arm (c) but all well ABOVE chance → consumers confuse
   rather than inform; design doesn't test reach
 
-**Status:** generator and diagnostic built. Training not started. No model
-has been trained on DAG data. Intervention spec is pre-registered here before
-any measurement exists.
+**Status:** RUN AND CLOSED, 11 Aug 2026. `logs/m9_dag_intervention.log`,
+`scripts/m9_dag_intervention.py`, checkpoint `denoiser_dag10_d16_mixedP50.pt`
+(4L × 128w), one seed. Everything below the spec was written after the number
+existed; nothing above it was edited after the fact.
+
+---
+
+### 11.1 Result — the four arms
+
+n = 543 held-out records, one qualifying step per trace, oracle selection,
+nfe 32, eta 1.0, shared erasure seed.
+
+| arm | RESULT | chance | z | formed |
+|---|---|---|---|---|
+| (a) both consumers visible | 1.5% | 0.6% | 2.63 | 95.8% |
+| (b) near erased — far evidence only | 1.1% | 0.6% | 1.49 | 97.2% |
+| (c) far erased — near evidence only | 1.5% | 0.6% | 2.47 | 96.7% |
+| (d) both erased — no consumer evidence | 0.7% | 0.7% | 0.22 | 96.9% |
+
+Primary (b) − (c) = **−0.4%**. McNemar b-only 5, c-only 7, discordant 12,
+χ²(1) cc = 0.08 — not significant. Branch ② fired (arms a and c separate from
+chance), so the consumer-provenance stratification was run before interpretation:
+
+| near × far consumer provenance | n | a | b | c | d |
+|---|---|---|---|---|---|
+| one-leaf × both-from-earlier | 284 | 1.8% | 1.1% | 2.1% | 0.4% |
+| BFE × BFE — the unconfoundable cell | 226 | 0.9% | 1.3% | 0.9% | 1.3% |
+
+On the unconfoundable cell: (b)−(c) = +0.4%, McNemar 2 vs 1, χ² = 0.00, not
+significant. One seed; a shape read off it is not a claim. The pre-registration
+estimated this cell at ~217 of 543 from the diagnostic; it landed at 226. The
+registered figure stands as written — the difference is recorded here, not
+patched above.
+
+### 11.2 The bound — state this, not the bare null
+
+"Null" undersells the result. There is a bound here and it is the thing worth
+reporting.
+
+The old regime produces **+2.51pp ± 0.62** at adjacency, six seeds, against a
+permutation chance of ~0.63%. An effect of that size at n = 543 would not have
+produced 5 versus 7 discordant pairs — it would have produced something in the
+region of 40 versus 45. The measurement had the power to see an adjacency-sized
+effect at reach and did not see one.
+
+So the claim is not "no effect of distance". It is:
+
+> **No far-reach effect of the size the adjacent pin produces.** At 400k
+> parameters, on multi-consumer DAG data, with the producer's provenance and
+> corruption held fixed within record, evidence at d ≥ 5 does not repair
+> measurably better than evidence at d ≤ 2, and an effect as large as the
+> adjacent one is excluded.
+
+That is a bounded negative result. Smaller effects are not excluded — the
+absolute rates are ~1%, and this is one seed, so the bar is within-run eval
+noise and not a between-run bar.
+
+### 11.3 The two unprintable cells are STRUCTURALLY RARE, not undersampled
+
+Two cells were withheld from the stratification table: **one-leaf × one-leaf
+(n = 23)** and **BFE × one-leaf (n = 10)**. Both are missing by construction,
+not by sampling.
+
+Far consumers (d ≥ 5) are **93% both-from-earlier**; near consumers are 57%
+one-leaf / 43% BFE. A far consumer sits late in the trace, where more earlier
+results exist to consume, so it is nearly always BFE. Both withheld cells
+require a *one-leaf far consumer* — the thing the generator almost cannot
+produce. More traces would scale n = 10 to n = 100 at ten times the cost and
+leave it the rarest cell in the design.
+
+"We could not measure it" and "the design cannot produce it" are different
+limitations. Only the second is true here. This is the consumer-side face of the
+same weld: see §10 of `paper.md`.
+
+---
+
+## 12. CONCLUSION OF THE REACH LINE — adjacency-dependence
+
+Four regimes have now freed distance from provenance, by four different
+mechanisms, and repair collapses to near chance in every one.
+
+| regime | how distance was freed | repair effect | reference |
+|---|---|---|---|
+| decorrelated arithmetic (20k) | consumers drawn by bounded distance | **+0.43%** | §9 |
+| dec10 (60k) | same, 3× budget | **+0.73%** | §9 |
+| dec7 | length-matched B = 7 variant | **−0.20% ± 0.23** (registered +1.3% ± 0.4; 3.7σ below) | §9 |
+| multi-consumer DAG | within-record, same value at two distances | **(b)−(c) = −0.4%**, χ² = 0.08 | §11 |
+
+Chance is ~0.63%. The old regime, where the pin is adjacent, gives
+**+2.51pp ± 0.62** over six seeds on the same readout.
+
+Four nulls is not four instrument failures. It is one fact arriving four times:
+
+> **ADJACENCY IS WHAT MAKES THE PIN EXPLOITABLE AT THIS SCALE.** Free the
+> distance from provenance and the effect goes, however the freeing is done —
+> by redrawing consumer distance, by shortening the chain, or by giving one
+> value two consumers and comparing within record.
+
+The last is the strongest of the four, because it is the only one that holds
+provenance, corruption, and erasure volume fixed *inside the record*. The
+between-record designs could always be answered with "you changed the data".
+The DAG intervention cannot.
+
+Whether adjacency-dependence is a CAPACITY limit or a STRUCTURAL one is not
+answerable at 4 layers × 128 wide. That is the open question, and it is stated
+as a falsifiable prediction in `paper.md` §12 rather than left as a gap.

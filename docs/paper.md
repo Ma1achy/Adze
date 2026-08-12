@@ -1,4 +1,4 @@
-# Downstream latent state causally supports reconstruction of an earlier reasoning step, where the prefix underdetermines it
+# Adjacent downstream latent state causally supports reconstruction of an earlier reasoning step, where the prefix underdetermines it
 
 **Draft.** Markdown, not LaTeX. Numbers are from the committed record in
 `RESULTS-2026-08-07.md`; every figure here is traceable to a run in `runs/`.
@@ -24,6 +24,14 @@ The question here is narrower and mechanistic:
 > Hold an erased block's direct inputs and its corruption fixed. Intervene only
 > on whether the downstream latent state was computed from the clean or the
 > corrupted predecessor. Does recovery of the erased block follow?
+
+**The answer here is yes, and it is bounded by distance.** The mechanism is real,
+measured, and demonstrated where the pin is **adjacent** to the erased block.
+Whether it extends past adjacency is not answerable at the scale run here — 4
+layers × 128 wide, roughly 400k parameters. Four independent attempts to free
+distance from provenance establish that limit rather than leave it open (§10.1,
+§12), and §12 states the falsifiable prediction that would settle whether the
+limit is one of capacity or of structure.
 
 ## 2. Setup
 
@@ -340,18 +348,24 @@ exposure-bias story, and a prefix information estimate that was a kNN artifact.
 
 ## 10. A methodological finding
 
-In this generator, distance-to-consumer is strongly associated with dependency
-type. Its construction and linearisation place different provenance classes into
-different distance distributions. A marginal distance profile therefore combines
-any genuine reach effect with changing provenance composition. Stratification can
-separate the variables where the design has overlapping support; combinations
-with structurally zero support require a redesigned generator.
+**Distance-to-consumer is strongly associated with dependency type, and not as a
+property of this generator.** Four independent generative processes were built or
+adopted to break that association — an expression tree under post-order emission,
+a decorrelated chain, 5,000 rated human chess games, and a multi-consumer DAG —
+and in every one the association survived, relocated to whichever variable the
+redesign had left free (§10.1). A marginal distance profile therefore combines any
+genuine reach effect with changing provenance composition. Stratification can
+separate the variables where a design has overlapping support; combinations with
+structurally zero support cannot be recovered by more data.
 
-An earlier draft of this section claimed the confound holds "in tree-structured
-reasoning tasks, by construction", and that a consumer is further away "in any
-evaluation order". Both are false. **Tree structure does not determine linear
-consumer distance — scheduling and sibling order do.** The result belongs to this
-generator and this linearisation, not to tree-structured reasoning generally.
+An earlier draft named the wrong mechanism. It claimed the confound holds "in
+tree-structured reasoning tasks, by construction", and that a consumer is further
+away "in any evaluation order". **Tree structure does not determine linear
+consumer distance — scheduling and sibling order do**, so that draft was wrong
+about the cause while being right that the confound generalises. §10.1 supplies
+the cause the draft was reaching for: not tree structure, but position in a
+sequence with accumulating state. Chess is neither tree-structured nor synthetic
+and shows the association more strongly than the original generator did.
 
 The consequence is specific and checkable: **a distance profile computed on such
 data can show a spurious window**, because the near cells are dominated by the
@@ -360,8 +374,9 @@ where it helps least. This work found that window at z = 6.06 and z = 4.21 over
 six seeds and led with it.
 
 More data does help wherever cells overlap — the one-leaf d = 4 cell is a
-demonstration of exactly that. A redesigned generator is required only for
-combinations with structurally zero support.
+demonstration of exactly that. Where support is structurally zero, more data
+cannot help, and the natural remedy is a redesigned generator — which is what
+§10.1 records four attempts at.
 
 **But "the design contains this contrast" and "the design contains enough of it to
 measure at reasonable cost" are different statements**, and the same cell shows
@@ -373,9 +388,15 @@ practice, which is why redesign was the route taken here.
 **Replication reduces sampling and training-run uncertainty, but does not remove
 design confounding; stratification or redesign is also required.**
 
-We suggest that any distance or reach profile reported on structured reasoning
-data be accompanied by the same decomposition, and — where a genuine reach claim
-is intended — a generator whose consumer assignment does not inherit the layout.
+We suggest that any distance or reach profile reported on sequential reasoning
+data be accompanied by the same decomposition. We no longer suggest, as an earlier
+draft did, that a redesigned generator is the remedy. **Distance in a sequence
+correlates with position; position determines how much prior context exists; how
+much prior context exists determines what kind of dependency a step can have.**
+That chain holds in any sequential process with accumulating state, and a design
+that severs it has removed the accumulation that made the process sequential.
+§10.1 gives the four processes on which it was measured. Decomposition, not
+redesign, is what the data supports.
 
 ### 10.1 Four processes, and a weld that moves rather than vanishing
 
@@ -467,7 +488,18 @@ the swing.
 ## 12. Limitations
 
 - **Scale.** GPT-2 scale at most; the reported configuration is 4 layers × 128
-  wide with D = 16 latents. Nothing here establishes how the effect scales.
+  wide with D = 16 latents — roughly 400k parameters. Nothing here establishes how
+  the effect scales.
+
+  This limitation carries a falsifiable prediction, and it is the cheapest way to
+  settle what four regimes could not. **If adjacency-dependence is a CAPACITY
+  limit, scale should make the decorrelated regime measurable, and the model size
+  at which it becomes so is itself informative. If it is STRUCTURAL — if global
+  attention over latent state simply does not carry a pin past the adjacent
+  block — no scale will.** The two hypotheses are indistinguishable at 400k
+  parameters and separate cleanly under scaling. The experiment is: train the
+  same pipeline on decorrelated or DAG data at increasing width and depth, and
+  read the within-record far-versus-near contrast described below at each size.
 - **Data.** Synthetic arithmetic with exactly-known provenance. That is what makes
   the intervention possible and it is also the main threat to external validity.
 - **Oracle selection.** The corrupted index is known. All figures are upper
@@ -486,8 +518,9 @@ the swing.
 - **Thin overlap is not the same as no overlap, but it costs like it.** The
   one-leaf class spans the full distance range, so the contrast exists — yet
   d = 4 holds ~134 records per seed and took six seeds to reach z = 4.04. More
-  data recovers such cells in principle; the cost is why this work redesigned the
-  generator instead.
+  data recovers such cells in principle; the cost is why this work tried a
+  redesigned generator instead. On the evidence of §10.1 that route did not pay,
+  and decomposition on the existing data is what the results rest on.
 
 - **At d = 1, one class has ZERO SUPPORT, and the class effects are themselves
   estimated from distance-imbalanced cells.** both-from-earlier is 0.0% of the
@@ -496,7 +529,8 @@ the swing.
   conditional regression of the effect on distance and provenance jointly cannot
   separate them at d = 1 — not because the cell is noisy, but because **the design
   has no overlap there.** No estimator recovers a contrast the data does not
-  contain. This is why a redesigned generator is load-bearing rather than tidy.
+  contain. This is why the redesigned generators were attempted rather than
+  treated as tidying — though §10.1 records what came of them.
 
 - **The old generator is STRUCTURALLY INCAPABLE of the decorrelated regime's
   dominant cell, not merely underpowered for it.** A both-leaves node has both
@@ -508,12 +542,45 @@ the swing.
   only **52%** of them. More traces from the old generator would not help; the
   cell is nearly absent by construction rather than by sampling.
 
-- **The decorrelated generator exists and is verified, and no model trained on it
-  repairs well enough to measure.** Three now exist: +0.43% at 20k steps, +0.73%
-  at 60k, and −0.20% on a length-matched B = 7 variant, against a permutation
-  chance of ~0.63% and an old-regime effect of +2.51% ± 0.62. Causal sits at
-  chance in all three. **Every distance claim in this paper therefore still rests
+- **Four regimes now free distance from provenance, and in none of them does
+  repair separate from chance.** Three are between-record: +0.43% at 20k steps on
+  the decorrelated generator, +0.73% at 60k, and −0.20% ± 0.23 on a length-matched
+  B = 7 variant (registered at +1.3% ± 0.4; the result is 3.7σ below it). The
+  fourth is within-record — a multi-consumer DAG in which one value is consumed at
+  two distances, so the same value with the same provenance and the same
+  corruption serves as its own control. Erasing the near consumer leaves far
+  evidence only; erasing the far one leaves near evidence only; a fourth arm
+  erases both so all arms match in erasure volume. Over n = 543 held-out
+  qualifying steps, far-only minus near-only is **−0.4%**, McNemar 5 versus 7
+  discordant, χ²(1) = 0.08. On the one cell where consumer provenance cannot
+  confound the comparison — both consumers both-from-earlier, n = 226 — it is
+  +0.4%, McNemar 2 versus 1, χ² = 0.00. All against a permutation chance of
+  ~0.63% and an old-regime effect of **+2.51% ± 0.62** over six seeds. Causal sits
+  at chance throughout. **Every distance claim in this paper therefore still rests
   on the confounded generator**, with the decomposition in §5 as the correction.
+
+  **The DAG result is a bounded negative, not a bare null, and should be read as
+  the bound.** An effect the size of the adjacent pin would have been visible at
+  this n: +2.51pp against ~0.63% chance predicts roughly 40 versus 45 discordant
+  pairs, and the observed split was 5 versus 7. So the claim the data supports is:
+
+  > **No far-reach effect of the size the adjacent pin produces.** At 400k
+  > parameters, on multi-consumer DAG data, with the producer's provenance and
+  > corruption held fixed within record and erasure volume matched across arms,
+  > evidence at d ≥ 5 does not repair measurably better than evidence at d ≤ 2,
+  > and an effect as large as the adjacent one is excluded.
+
+  Smaller effects are not excluded. Absolute rates are ~1%, and this is one seed,
+  so every z is within-run eval noise rather than a between-run bar.
+
+  Two cells of the stratification are withheld as unprintable — one-leaf × one-leaf
+  at n = 23 and both-from-earlier × one-leaf at n = 10. **These are structurally
+  rare, not undersampled.** A far consumer sits late in the trace, where many
+  earlier results exist, so it is both-from-earlier 93% of the time; both withheld
+  cells require a one-leaf far consumer. Ten times the traces would take n = 10 to
+  n = 100 at ten times the cost and leave it the rarest cell in the design. "We
+  could not measure it" and "the design cannot produce it" are different
+  limitations, and only the second is true here.
 
   Four alternatives were checked and eliminated: undertraining (3× budget bought
   +0.30pp), trace length (old-generator 7-step traces are the *strongest* cell at
@@ -529,8 +596,20 @@ the swing.
   exploit. **The confound and the effect share a cause**, so removing the weld
   removes most of the signal.
 
-  The consequence for the paper's scope is direct: this work measures repair **when
-  the pin is adjacent**, and cannot yet extend that to when it is far.
+  **The consequence for the paper's scope is direct, and it narrows the claim
+  rather than qualifying it.** The mechanism is real, measured, and demonstrated
+  **where the pin is adjacent**. Whether it extends past adjacency is not
+  answerable at 400k parameters — and four independent attempts establish that,
+  rather than leaving it open. The four regimes do not read as four instrument
+  failures; they read as one fact appearing four times:
+
+  > **Adjacency is what makes the pin exploitable at this scale.** Free distance
+  > from provenance and the effect goes, however the freeing is done — by a
+  > decorrelated consumer draw, by shortening the chain, or by giving one value
+  > two consumers and holding everything but distance fixed inside the record.
+
+  What that leaves open is capacity versus structure, and the Scale bullet above
+  states the prediction that separates them.
 
 ## Claim wording
 
