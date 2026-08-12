@@ -27,11 +27,12 @@ The question here is narrower and mechanistic:
 
 **The answer here is yes, and it is bounded by distance.** The mechanism is real,
 measured, and demonstrated where the pin is **adjacent** to the erased block.
-Whether it extends past adjacency is not answerable at the scale run here — 4
-layers × 128 wide, roughly 400k parameters. Four independent attempts to free
-distance from provenance establish that limit rather than leave it open (§10.1,
-§12), and §12 states the falsifiable prediction that would settle whether the
-limit is one of capacity or of structure.
+Whether it extends past adjacency is not answerable at the scale and architecture
+run here — 4 layers × 128 wide, roughly 400k parameters, fixed blocks, no learned
+segmentation and no carrier positions. Four independent attempts to free distance
+from provenance establish that limit rather than leave it open (§10.1, §12), and
+§12 states the falsifiable prediction that would settle whether the limit is one
+of capacity or of structure.
 
 ## 2. Setup
 
@@ -500,6 +501,16 @@ the swing.
   parameters and separate cleanly under scaling. The experiment is: train the
   same pipeline on decorrelated or DAG data at increasing width and depth, and
   read the within-record far-versus-near contrast described below at each size.
+- **Architecture, and it is a separate axis from scale.** Everything measured
+  here uses **fixed newline-delimited blocks, no learned segmentation, no carrier
+  positions, no hierarchy over latents.** Adjacency-dependence is a property of
+  that architecture, and "structural" above should be read as *structural to this
+  architecture*, not to latent diffusion reasoning. An architecture whose explicit
+  purpose is to move information across distance — learned segmentation,
+  hierarchical latents, dedicated carrier channels — could answer the reach
+  question differently, and none of those was built. The four regimes plus the
+  within-record intervention are re-runnable against any such component; the
+  adjacency-dependent result is the floor such a component would have to beat.
 - **Data.** Synthetic arithmetic with exactly-known provenance. That is what makes
   the intervention possible and it is also the main threat to external validity.
 - **Oracle selection.** The corrupted index is known. All figures are upper
@@ -603,13 +614,16 @@ the swing.
   rather than leaving it open. The four regimes do not read as four instrument
   failures; they read as one fact appearing four times:
 
-  > **Adjacency is what makes the pin exploitable at this scale.** Free distance
+  > **Adjacency is what makes the pin exploitable at this scale and
+  > architecture.** Free distance
   > from provenance and the effect goes, however the freeing is done — by a
   > decorrelated consumer draw, by shortening the chain, or by giving one value
   > two consumers and holding everything but distance fixed inside the record.
 
-  What that leaves open is capacity versus structure, and the Scale bullet above
-  states the prediction that separates them.
+  What that leaves open is capacity versus structure, and the Scale and
+  Architecture bullets above state what separates them: scale settles the first,
+  and only an architecture built to move information across distance can settle
+  the second. Neither was run here.
 
 ## Claim wording
 

@@ -337,23 +337,82 @@ If the window is 2 because the **task's** dependencies reach 2, the right rule i
 
 ---
 
-## Ordering — SETTLED 12 Aug 2026
+## Ordering — PARKED PENDING ARCHITECTURE, 12 Aug 2026
 
-The reach line is finished. What follows replaces the running queue below it;
-the queue is kept for its reasoning, not as a work list.
+The reach line is parked, not settled. What follows replaces the running queue
+below it; the queue is kept for its reasoning, not as a work list.
 
-### CLOSED — the whole reach line
+**Read the distinction before reading the entries.** Everything measured on this
+line was measured at **4 layers × 128 wide, fixed newline-delimited blocks, no
+learned segmentation, no carrier, no hierarchy.** Adjacency-dependence is a
+property of *that architecture at that scale* — it is not a property of latent
+diffusion reasoning, and it is not a fact about the generators. The endpoint
+(`endpoint.md`) is specifically designed to move information across distance:
+learned segmentation, hierarchical latents, carrier positions. Any of those could
+answer the reach question differently, and none of them has been built.
 
-**§0, §1, §3, §5, §7, §9, §10, §11, plus chess.**
+So the entries below are **parked**, not closed. In three months the two will
+look identical unless the difference is written down, so it is written here:
+*closed* means the question is answered and re-running it would learn nothing;
+*parked* means the instrument is exhausted and a different instrument is owed.
+
+### THIS IS A TEST SUITE, NOT A CLOSED FILE
+
+That framing is the more useful one and it should be the headline. What the
+reach line has produced is not a null — it is **five generative regimes and one
+registered within-record intervention, all built, all verified, all re-runnable**:
+
+| regime | what it isolates |
+|---|---|
+| tree (`cap100`) | the working baseline — repair measurable, +2.51 ± 0.62 at adjacency |
+| decorrelated (`dec10`) | distance freed from provenance by bounded consumer draw |
+| `dec7` | the same, length-matched to the tree |
+| multi-consumer DAG (`dag10`) | one value, two consumers — within-record, provenance and corruption fixed |
+| chess | a non-synthetic process with real conditional structure — **to build** |
+
+Plus §11's pre-registered four-arm design with its `|S|` fix, its decision tree,
+and its chance null.
+
+Most architecture work cannot tell whether a change did anything
+*mechanistically* — it reports a loss curve and an aggregate score. This suite
+can. Any endpoint component — carrier heads, hierarchy, learned segmentation —
+gets re-run against five regimes and a within-record intervention that already
+knows what the answer looks like when the mechanism is absent. **The negative
+result is what makes the suite diagnostic**: adjacency-dependence at 400k
+parameters is the floor a component has to beat, and it is measured, not assumed.
+
+Do not delete these generators. They are the instrument.
+
+### PARKED — the reach line, pending an architecture that could move it
+
+**§0, §1, §3, §5, §7, §9, §10, §11.**
 
 Reason: **adjacency-dependence, established across four regimes** (§12 below).
 Every design that frees consumer distance from provenance — decorrelated
 arithmetic, dec10, dec7, and the multi-consumer DAG — puts repair at or near
-chance. The reach question is not open; it is answered with a bound. There is no
-measurable far-reach effect of the size the adjacent pin produces, at this scale.
+chance. The reach question is not open *at this scale and architecture*; it is
+answered there with a bound. There is no measurable far-reach effect of the size
+the adjacent pin produces, at 400k parameters with fixed blocks and no carrier.
 
-The individual items are closed with it because each of them presupposed a
-measurable reach signal to shape, curriculum toward, or extend.
+The individual items are parked with it because each of them presupposed a
+measurable reach signal to shape, curriculum toward, or extend — and at this
+scale there is none to shape. That presupposition is exactly what an endpoint
+component might supply.
+
+### DEFERRED — chess, as the fifth test case
+
+**Not closed.** The earlier entry read closed; that was wrong. Chess is deferred
+as a **test case to build**, and the constraint on it is specific:
+
+> **Run it within-record only.** Chess has inherent tactical clustering
+> (χ²/dof = 604) and between-record comparisons on it are confounded by piece
+> type, position, and phase. The §11 design — one value, two consumers, same
+> record, same corruption, erasure volume matched — is the only form that
+> survives that. Do not run a between-record distance cut on chess.
+
+It joins the suite rather than testing the reach question on its own. Its value
+is that it is not synthetic: if an endpoint component moves the four synthetic
+regimes and not chess, that is worth knowing before the claim is made.
 
 ### NOT CLOSED — two items, and neither is a reach experiment
 
@@ -365,18 +424,26 @@ the working regime — architecture and training-mask questions about a signal t
 exists — not attempts to measure reach in a decorrelated one. Nothing in §12
 bears on them. They remain available and unrun.
 
-### SUPERSEDED — a fifth generator
+### SUPERSEDED — a fifth generator built to answer the reach question
 
 Not closed by failure, superseded by argument. If the entanglement of distance
 and provenance is structural to sequential data with accumulating state — which
 is what §10.1 of `paper.md` argues from four independent processes — then a
-better generator is not the answer. A fifth attempt would be a fifth instance of
-the same result, and the design that decouples the two has removed the
-accumulation that made the process sequential in the first place.
+better generator is not the answer. A fifth attempt *as an answer* would be a
+fifth instance of the same result, and the design that decouples the two has
+removed the accumulation that made the process sequential in the first place.
+
+**This does not supersede chess.** Chess is deferred as a fifth *test case* —
+another surface for an endpoint component to be measured on — not as another
+attempt to decorrelate distance from provenance. The distinction is the whole
+difference between the suite framing above and the closed-file framing it
+replaced.
 
 ### The queue as it stood
 
-Kept verbatim for its reasoning. All of it is closed except §4 and §8.
+Kept verbatim for its reasoning. All of it is parked except §4 and §8, which
+remain unrun on the working regime, and §7 chess, which is deferred as a test
+case to build.
 
 1. **§0 free check** — condition the d=3/d=4 nulls on genuine consumers
 2. **§8 banded refine mask** — free, existing checkpoints, and the only item that can produce a positive result — **NOT CLOSED**
@@ -387,7 +454,7 @@ Kept verbatim for its reasoning. All of it is closed except §4 and §8.
 7. **§2 two-way hierarchy**
 8. **§5 depth**
 9. **§6 relative-position bias**
-10. **§7 chess** — promoted 9 Aug 2026, closed 10 Aug 2026; see §10.
+10. **§7 chess** — promoted 9 Aug 2026, diagnosed 10 Aug 2026, **DEFERRED as the fifth test case 12 Aug 2026** — build it, run within-record only; see §10.
 
 **Progress:** §1 done (§1a — reach does not compound; the loop shreds context). §5 done, pending seeds (§5a — depth deepens the window, does not widen it).
 
@@ -405,7 +472,23 @@ Kept verbatim for its reasoning. All of it is closed except §4 and §8.
 
 ---
 
-## 10. Chess — CLOSED (promoted 9 Aug 2026, closed 10 Aug 2026)
+## 10. Chess — DEFERRED as the fifth test case (promoted 9 Aug 2026, between-record use closed 10 Aug 2026, deferred 12 Aug 2026)
+
+**Read the status before the section.** Two different uses of chess are in play
+and only one of them is closed:
+
+- **CLOSED — chess as a between-record distance measurement.** χ²/dof = 604.
+  The coupling is inherent to real games. Everything below this status block is
+  the evidence for that, and it stands.
+- **DEFERRED — chess as the fifth test case in the suite.** Build it; run the
+  §11 within-record design on it only. Its value is that it is not synthetic: an
+  endpoint component that moves four synthetic regimes and not chess is a
+  component whose claim is narrower than it looks. Nothing here argues against
+  that use — the χ²/dof = 604 finding is precisely why the between-record form
+  is unavailable and the within-record form is the only one that survives.
+
+See the ordering block for the constraint in full.
+
 
 The decorrelated synthetic generator was built and measured (three models: +0.43%,
 +0.73%, −0.20%). The null dec7 result established that the confound and the old
@@ -429,7 +512,8 @@ piece-type composition per provenance class before interpreting any coupling.
 PGN slice. If χ²/dof < 20 and the conditional consumer-distance distributions
 overlap substantially across provenance classes, proceed to VAE training.
 
-**Status:** CLOSED — chess has the same weld, worse than the arithmetic tree.
+**Status:** CLOSED *as a between-record measurement* — chess has the same weld,
+worse than the arithmetic tree. Deferred, not closed, as a within-record test case.
 
 **Diagnostic result (9 Aug 2026):** 5,000 Lichess games (2013-01, rapid/classical
 filter), χ²/dof = **604** against thresholds of 20 (proceed) / 50 (investigate).
@@ -454,6 +538,14 @@ artifact. An interior-band cut is not applicable (χ²/dof = 604, far above 50).
 Highly constrained position selection (endgame tablebases, specific opening lines)
 might find a domain subset where distance and provenance are independent, but that
 is a different research question. The reach question remains unanswered.
+
+**What survives the closure (added 12 Aug 2026).** χ²/dof = 604 rules out the
+comparison BETWEEN records; it says nothing about a comparison WITHIN one. The
+§11 design holds the record, the corruption and the erasure volume fixed and
+varies only which consumer survives — piece type, position and phase are then
+constant by construction rather than balanced by hope. That form is available on
+chess and it is the only form that is. Build it as the fifth test case; do not
+run a between-record distance cut on it.
 
 ---
 
